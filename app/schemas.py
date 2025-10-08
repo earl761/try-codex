@@ -16,7 +16,16 @@ from pydantic import (
     model_validator,
 )
 
+from .constants import ADMIN_ROLES, ASSIGNABLE_AGENCY_ROLES, USER_ROLES
 from .utils import SUPPORTED_PAYMENT_PROVIDERS
+
+
+def _validate_role(role: str, allowed_roles: tuple[str, ...]) -> str:
+    if role not in allowed_roles:
+        raise ValueError(
+            f"role must be one of {', '.join(allowed_roles)}"
+        )
+    return role
 
 
 class TimestampMixin(BaseModel):
@@ -880,6 +889,12 @@ class UserBase(BaseModel):
     is_active: bool = True
     is_admin: bool = False
     is_super_admin: bool = False
+    role: str = Field("staff", description="Role within the platform or agency")
+
+    @field_validator("role")
+    @classmethod
+    def validate_role(cls, value: str) -> str:
+        return _validate_role(value, USER_ROLES)
 
 
 class UserCreate(UserBase):
@@ -894,11 +909,50 @@ class UserUpdate(BaseModel):
     is_admin: Optional[bool] = None
     agency_id: Optional[int] = None
     is_super_admin: Optional[bool] = None
+    role: Optional[str] = Field(None, description="Updated role designation")
+
+    @field_validator("role")
+    @classmethod
+    def validate_role(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return value
+        return _validate_role(value, USER_ROLES)
 
 
 class User(UserBase, TimestampMixin):
     id: int
     two_factor_enabled: bool = False
+
+
+class AgencyUserCreate(BaseModel):
+    email: EmailStr
+    full_name: Optional[str] = None
+    whatsapp_number: Optional[str] = None
+    password: str = Field(..., min_length=8)
+    role: str = Field("staff", description="Agency-specific role assignment")
+    is_active: bool = True
+    is_admin: Optional[bool] = None
+
+    @field_validator("role")
+    @classmethod
+    def validate_role(cls, value: str) -> str:
+        return _validate_role(value, ASSIGNABLE_AGENCY_ROLES)
+
+
+class AgencyUserUpdate(BaseModel):
+    full_name: Optional[str] = None
+    whatsapp_number: Optional[str] = None
+    password: Optional[str] = Field(None, min_length=8)
+    role: Optional[str] = Field(None)
+    is_active: Optional[bool] = None
+    is_admin: Optional[bool] = None
+
+    @field_validator("role")
+    @classmethod
+    def validate_role(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return value
+        return _validate_role(value, ASSIGNABLE_AGENCY_ROLES)
 
 
 class SignupRequest(BaseModel):
@@ -910,6 +964,17 @@ class SignupRequest(BaseModel):
     agency_name: Optional[str] = Field(
         None, description="Optional agency name to create alongside the user"
     )
+    role: Optional[str] = Field(
+        None,
+        description="Desired role when joining an existing agency",
+    )
+
+    @field_validator("role")
+    @classmethod
+    def validate_role(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return value
+        return _validate_role(value, ASSIGNABLE_AGENCY_ROLES)
 
 
 class LoginRequest(BaseModel):

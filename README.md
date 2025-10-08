@@ -15,6 +15,7 @@ A FastAPI-based backend for travel and tour agencies to manage clients, build pr
 - **Media Library & Optimization**: Upload images for itineraries, automatically optimize them for web delivery, and manage the gallery from the admin console.
 - **Subscription Packages**: Configure travel-agency subscription plans, toggle included modules (core platform, flight booking add-on), and surface pricing on the SEO landing page.
 - **Authentication & 2FA**: Email-based signup/login with optional TOTP two-factor activation for additional security.
+- **Team Management**: Invite agency staff accounts, assign planner, finance, or manager roles, and collaborate with the right permissions.
 - **Notifications**: Automatic email and WhatsApp notification logs for client, itinerary, finance, supplier, and integration events.
 - **Admin Console**: Manage travel agencies, integration API keys, site settings, and review notification history.
 - **SEO Landing Page**: A marketing-focused landing page powered by Jinja2 with customizable meta tags managed through admin settings.
@@ -61,6 +62,7 @@ app/
 │   ├── deps.py              # Shared FastAPI dependencies
 │   └── routes/              # Modular endpoint definitions
 │       ├── admin.py
+│       ├── agency_users.py
 │       ├── auth.py
 │       ├── clients.py
 │       ├── finance.py
@@ -147,6 +149,10 @@ pytest
 Looking to commercialize the platform? Review the [SaaS Readiness Roadmap](docs/saas_roadmap.md) for a curated backlog covering operational foundations (multi-tenant isolation, billing, audit trails), revenue-driving add-ons (marketplace upsells, dynamic packaging, automation), growth levers (referrals, public APIs, in-app guidance), and enterprise capabilities (SLAs, SSO, data residency).
 
 Refer to the auto-generated docs for the full list of endpoints and payload schemas.
+
+## NDC Integration Research
+
+Planning ahead for airline NDC connectivity? Start with the [NDC Provider Research](docs/ndc_providers.md) summary covering public or sandbox-ready APIs (such as Amadeus Enterprise, Lufthansa Group, British Airways, and Duffel) plus eligibility notes to guide integration sequencing.
 
 ## Notifications & Two-Factor Workflow
 

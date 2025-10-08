@@ -381,6 +381,7 @@ class User(Base, TimestampMixin):
     is_active = Column(Boolean, nullable=False, default=True)
     is_admin = Column(Boolean, nullable=False, default=False)
     is_super_admin = Column(Boolean, nullable=False, default=False)
+    role = Column(String(50), nullable=False, default="staff")
     agency_id = Column(Integer, ForeignKey("travel_agencies.id"), nullable=True)
     two_factor_secret = Column(String(32), nullable=True)
     two_factor_enabled = Column(Boolean, nullable=False, default=False)

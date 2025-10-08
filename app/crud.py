@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from . import models, schemas, utils
 from .constants import (
+    ADMIN_ROLES,
     APP_NAME,
     DEFAULT_LANDING_PAGE,
     DEFAULT_POWERED_BY_LABEL,
@@ -473,6 +474,9 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 
 
 def create_user(session: Session, user_in: schemas.UserCreate) -> models.User:
+    role = user_in.role
+    is_super_admin = user_in.is_super_admin or role == "super_admin"
+    is_admin = user_in.is_admin or role in ADMIN_ROLES
     user = models.User(
         email=user_in.email,
         full_name=user_in.full_name,
@@ -480,8 +484,9 @@ def create_user(session: Session, user_in: schemas.UserCreate) -> models.User:
         whatsapp_number=user_in.whatsapp_number,
         agency_id=user_in.agency_id,
         is_active=user_in.is_active,
-        is_admin=user_in.is_admin,
-        is_super_admin=user_in.is_super_admin,
+        is_admin=is_admin,
+        is_super_admin=is_super_admin,
+        role=role,
     )
     session.add(user)
     session.flush()
@@ -507,16 +512,39 @@ def get_user_by_email(session: Session, email: str) -> models.User | None:
     return session.scalars(statement).first()
 
 
+def list_agency_users(session: Session, agency_id: int) -> list[models.User]:
+    statement = select(models.User).where(models.User.agency_id == agency_id)
+    return list(session.scalars(statement).all())
+
+
 def update_user(session: Session, user: models.User, user_in: schemas.UserUpdate) -> models.User:
     data = user_in.model_dump(exclude_unset=True)
     password = data.pop("password", None)
+    role = data.pop("role", None)
+    is_admin = data.pop("is_admin", None)
+    is_super_admin = data.pop("is_super_admin", None)
     for field, value in data.items():
         setattr(user, field, value)
+    if role is not None:
+        user.role = role
+        if is_admin is None:
+            user.is_admin = role in ADMIN_ROLES
+        if is_super_admin is None:
+            user.is_super_admin = role == "super_admin"
+    if is_admin is not None:
+        user.is_admin = is_admin
+    if is_super_admin is not None:
+        user.is_super_admin = is_super_admin
     if password:
         user.hashed_password = hash_password(password)
     session.add(user)
     session.flush()
     return user
+
+
+def delete_user(session: Session, user: models.User) -> None:
+    session.delete(user)
+    session.flush()
 
 
 def authenticate_user(

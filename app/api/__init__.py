@@ -3,6 +3,7 @@ from fastapi import APIRouter
 
 from .routes import (
     admin,
+    agency_users,
     auth,
     clients,
     finance,
@@ -18,6 +19,7 @@ from .routes import (
 
 router = APIRouter()
 router.include_router(auth.router)
+router.include_router(agency_users.router)
 router.include_router(clients.router)
 router.include_router(leads.router)
 router.include_router(tour_packages.router)

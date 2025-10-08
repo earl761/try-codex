@@ -21,3 +21,21 @@ LANDING_PAGE_TEXT_FIELDS: tuple[str, ...] = (
 )
 
 DEFAULT_POWERED_BY_LABEL = f"Powered by {APP_NAME}"
+
+USER_ROLES: tuple[str, ...] = (
+    "super_admin",
+    "agency_owner",
+    "agency_manager",
+    "planner",
+    "finance",
+    "support",
+    "operations",
+    "viewer",
+    "staff",
+)
+
+ASSIGNABLE_AGENCY_ROLES: tuple[str, ...] = tuple(
+    role for role in USER_ROLES if role != "super_admin"
+)
+
+ADMIN_ROLES: tuple[str, ...] = ("agency_owner", "agency_manager", "super_admin")

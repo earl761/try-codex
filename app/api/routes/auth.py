@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from ... import crud, schemas
+from ...constants import ADMIN_ROLES
 from ..deps import get_db
 
 
@@ -34,6 +35,13 @@ def signup(payload: schemas.SignupRequest, db: Session = Depends(get_db)) -> sch
         if not agency:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agency not found")
 
+    if payload.role:
+        role = payload.role
+    elif payload.agency_name and not payload.agency_id:
+        role = "agency_owner"
+    else:
+        role = "staff"
+
     user = crud.create_user(
         db,
         schemas.UserCreate(
@@ -43,8 +51,9 @@ def signup(payload: schemas.SignupRequest, db: Session = Depends(get_db)) -> sch
             whatsapp_number=payload.whatsapp_number,
             agency_id=agency_id,
             is_active=True,
-            is_admin=False,
+            is_admin=role in ADMIN_ROLES,
             is_super_admin=False,
+            role=role,
         ),
     )
     return user

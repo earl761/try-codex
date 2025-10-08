@@ -70,6 +70,7 @@ def create_super_admin_user(email: str = "founder@tourplanner.example") -> str:
                 full_name="Platform Owner",
                 is_admin=True,
                 is_super_admin=True,
+                role="super_admin",
             ),
         )
         session.commit()
@@ -505,6 +506,7 @@ def test_authentication_with_two_factor(api_client: TestClient) -> None:
     user_body = signup_response.json()
     assert user_body["email"] == email
     assert user_body["agency_id"] is not None
+    assert user_body["role"] == "agency_owner"
 
     login_response = api_client.post("/auth/login", json={"email": email, "password": password})
     assert login_response.status_code == 200
@@ -636,6 +638,50 @@ def test_admin_controls_and_landing_page(api_client: TestClient) -> None:
     settings_list = api_client.get("/admin/settings")
     assert settings_list.status_code == 200
     assert any(setting["key"] == "headline" for setting in settings_list.json())
+
+
+def test_agency_staff_management(api_client: TestClient) -> None:
+    create_super_admin_user()
+    agency_response = api_client.post(
+        "/admin/agencies",
+        json={
+            "name": "Trailfinders",
+            "slug": "trailfinders",
+            "contact_email": "hello@trailfinders.example",
+        },
+    )
+    assert agency_response.status_code == 201
+    agency_id = agency_response.json()["id"]
+
+    staff_payload = {
+        "email": "planner@trailfinders.example",
+        "password": "PlannerPass123",
+        "full_name": "Plan Pro",
+        "role": "planner",
+    }
+    create_response = api_client.post(f"/agencies/{agency_id}/users", json=staff_payload)
+    assert create_response.status_code == 201
+    staff_body = create_response.json()
+    assert staff_body["role"] == "planner"
+    assert staff_body["agency_id"] == agency_id
+
+    roster = api_client.get(f"/agencies/{agency_id}/users")
+    assert roster.status_code == 200
+    assert len(roster.json()) == 1
+
+    update_response = api_client.put(
+        f"/agencies/{agency_id}/users/{staff_body['id']}",
+        json={"role": "finance"},
+    )
+    assert update_response.status_code == 200
+    assert update_response.json()["role"] == "finance"
+
+    delete_response = api_client.delete(f"/agencies/{agency_id}/users/{staff_body['id']}")
+    assert delete_response.status_code == 204
+
+    empty_roster = api_client.get(f"/agencies/{agency_id}/users")
+    assert empty_roster.status_code == 200
+    assert empty_roster.json() == []
 
 
 def test_amadeus_search_supports_multi_city(api_client: TestClient) -> None:
@@ -861,6 +907,7 @@ def test_itinerary_collaboration_and_documents(api_client: TestClient) -> None:
                 email="collab@example.com",
                 password="Collaborate123!",
                 full_name="Collaborator Coach",
+                role="planner",
             ),
         )
         session.commit()
