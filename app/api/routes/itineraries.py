@@ -18,6 +18,10 @@ router = APIRouter(prefix="/itineraries", tags=["itineraries"])
 def create_itinerary(
     itinerary_in: schemas.ItineraryCreate, db: Session = Depends(get_db)
 ) -> models.Itinerary:
+    try:
+        itinerary = crud.create_itinerary(db, itinerary_in)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     itinerary = crud.create_itinerary(db, itinerary_in)
     db.refresh(itinerary)
     return itinerary
@@ -45,6 +49,10 @@ def update_itinerary(
     itinerary = crud.get_itinerary(db, itinerary_id)
     if not itinerary:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Itinerary not found")
+    try:
+        itinerary = crud.update_itinerary(db, itinerary, itinerary_in)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     itinerary = crud.update_itinerary(db, itinerary, itinerary_in)
     db.refresh(itinerary)
     return itinerary
@@ -63,6 +71,25 @@ def duplicate_itinerary(itinerary_id: int, db: Session = Depends(get_db)) -> mod
     clone = crud.duplicate_itinerary(db, itinerary)
     db.refresh(clone)
     return clone
+
+
+@router.post(
+    "/{itinerary_id}/invoice",
+    response_model=schemas.Invoice,
+    status_code=status.HTTP_201_CREATED,
+    summary="Generate an invoice from an itinerary estimate",
+)
+def invoice_itinerary(
+    itinerary_id: int,
+    payload: schemas.ItineraryInvoiceCreate,
+    db: Session = Depends(get_db),
+) -> models.Invoice:
+    itinerary = crud.get_itinerary(db, itinerary_id)
+    if not itinerary:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Itinerary not found")
+    invoice = crud.create_invoice_from_itinerary(db, itinerary, payload)
+    db.refresh(invoice)
+    return invoice
 
 
 @router.get(

@@ -1,5 +1,19 @@
 # Tour Planner API
 
+A FastAPI-based backend for travel and tour agencies to manage clients, build printable itineraries, run notifications, and track finances with secure access controls.
+
+## Features
+
+- **Itinerary Builder**: Create multi-day itineraries with detailed day plans, branded estimates, day-level imagery, and generate printable HTML output.
+- **CRM Tools**: Manage clients and leads, capture notes and statuses, and convert warm leads into clients in one click.
+- **Supplier Marketplace**: Capture partner lodges, hotels, transport providers, and their rate cards for itinerary planning.
+- **Inventory Management**: Store reusable tour packages and supplier-specific pricing.
+- **Finance Module**: Issue invoices, record payments and expenses, and view profitability summaries and sales reports with monthly rollups.
+- **Media Library & Optimization**: Upload images for itineraries, automatically optimize them for web delivery, and manage the gallery from the admin console.
+- **Authentication & 2FA**: Email-based signup/login with optional TOTP two-factor activation for additional security.
+- **Notifications**: Automatic email and WhatsApp notification logs for client, itinerary, finance, supplier, and integration events.
+- **Admin Console**: Manage travel agencies, integration API keys, site settings, and review notification history.
+- **SEO Landing Page**: A marketing-focused landing page powered by Jinja2 with customizable meta tags managed through admin settings.
 A FastAPI-based backend for travel and tour agencies to manage clients, build printable itineraries, and track finances.
 
 ## Features
@@ -45,10 +59,15 @@ app/
 │   ├── __init__.py          # Aggregated API router
 │   ├── deps.py              # Shared FastAPI dependencies
 │   └── routes/              # Modular endpoint definitions
+│       ├── admin.py
+│       ├── auth.py
 │       ├── clients.py
 │       ├── finance.py
 │       ├── itineraries.py
 │       ├── leads.py
+│       ├── media.py
+│       ├── reports.py
+│       ├── suppliers.py
 │       ├── reports.py
 │       └── tour_packages.py
 ├── crud.py          # Database helper operations
@@ -56,6 +75,9 @@ app/
 ├── main.py          # FastAPI application factory
 ├── models.py        # SQLAlchemy ORM models
 ├── schemas.py       # Pydantic models for validation
+├── templates/       # Jinja2 templates for printable itineraries and landing page
+│   ├── itinerary.html
+│   └── landing.html
 ├── templates/       # Jinja2 templates for printable itineraries
 │   └── itinerary.html
 ├── utils.py         # Helper utilities
@@ -73,6 +95,34 @@ pytest
 
 ## API Highlights
 
+- `POST /auth/signup` – register a new travel agency user (optionally creating the agency record).
+- `POST /auth/login` – obtain a session token; responds with `two_factor_required` when 2FA must be verified.
+- `POST /auth/2fa/setup` & `/auth/2fa/activate` – generate and enable TOTP-based two-factor authentication for a user.
+- `POST /clients` – create a client record with automatic notification logging.
+- `POST /itineraries` – create a branded itinerary with images, estimate amounts, and email/WhatsApp notifications.
+- `GET /itineraries/{id}/print` – render a printable itinerary document.
+- `POST /itineraries/{id}/invoice` – convert an itinerary estimate into a finance invoice in one call.
+- `POST /finance/invoices` – issue an invoice linked to a client or itinerary.
+- `POST /leads/{id}/convert` – create a client record from a qualified lead.
+- `POST /itineraries/{id}/duplicate` – clone an itinerary as a reusable template.
+- `GET /finance/summary` – view totals for invoices, payments, expenses, and profitability.
+- `POST /suppliers` – onboard supplier partners with contact information and integration metadata.
+- `POST /suppliers/{id}/rates` – manage supplier rate cards that feed into itinerary pricing.
+- `POST /media/assets` – upload an image, store the original, and produce an optimized rendition for itineraries.
+- `GET /admin/media` – review, update, or delete media assets across the platform.
+- `GET /suppliers/integrations/{provider}/{resource}` – preview data structures for external APIs (Amadeus hotels/flights, etc.).
+- `POST /admin/agencies` – manage travel agencies from the admin console.
+- `POST /admin/api-keys` – store provider API keys (e.g., Amadeus) scoped to an agency.
+- `GET /admin/notifications` – audit recent email/WhatsApp notifications and delivery metadata.
+- `PUT /admin/settings/{key}` – override landing page headlines, SEO descriptions, and keywords.
+
+Refer to the auto-generated docs for the full list of endpoints and payload schemas.
+
+## Notifications & Two-Factor Workflow
+
+1. **Signup/Login** – Create a user via `/auth/signup` and authenticate via `/auth/login`. If the user has enabled 2FA, `two_factor_required` will be `true` and a valid TOTP code must be supplied on a subsequent login request.
+2. **Enable 2FA** – Call `/auth/2fa/setup` to obtain the provisioning URI and shared secret. After scanning or entering the secret into an authenticator app, confirm the generated code via `/auth/2fa/activate`.
+3. **Notification Logs** – Most client, itinerary, finance, supplier, agency, and integration actions automatically enqueue an email and/or WhatsApp notification log. Administrators can review these entries with `/admin/notifications` or view aggregated counts at `/admin/notifications/summary`.
 - `POST /clients` – create a client record
 - `POST /itineraries` – create an itinerary with day-by-day details
 - `GET /itineraries/{id}/print` – render a printable itinerary document
