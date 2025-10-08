@@ -153,15 +153,27 @@ def test_create_itinerary_and_print(api_client: TestClient) -> None:
     assert body["extensions"][0]["title"] == "Ubud Cultural Extension"
     assert body["items"][0]["media"][0]["asset"]["alt_text"] == "Sunset vista"
 
-    printable = api_client.get(f"/itineraries/{itinerary_id}/print")
-    assert printable.status_code == 200
-    html = printable.text
-    assert "Bali Adventure" in html
-    assert "Day 1" in html
-    assert "Optional Extensions" in html
-    assert "Traveler Guidance" in html
-    assert "Client Estimate" in html
-    assert "Thank you for choosing Explorer Collective." in html
+    classic = api_client.get(f"/itineraries/{itinerary_id}/print?layout=classic")
+    assert classic.status_code == 200
+    classic_html = classic.text
+    assert "Bali Adventure" in classic_html
+    assert "Day 1" in classic_html
+    assert "Extensions & Enhancements" in classic_html
+    assert "Travel Briefing" in classic_html
+    assert "Client Estimate" in classic_html
+    assert "Thank you for choosing Explorer Collective." in classic_html
+
+    modern = api_client.get(f"/itineraries/{itinerary_id}/print?layout=modern")
+    assert modern.status_code == 200
+    modern_html = modern.text
+    assert "Snapshot" in modern_html
+    assert "Know Before You Go" in modern_html
+
+    gallery = api_client.get(f"/itineraries/{itinerary_id}/print?layout=gallery")
+    assert gallery.status_code == 200
+    gallery_html = gallery.text
+    assert "Gallery Layout" in gallery_html
+    assert "Traveler Notes" in gallery_html
 
 
 def test_finance_summary_flow(api_client: TestClient) -> None:
@@ -178,14 +190,30 @@ def test_finance_summary_flow(api_client: TestClient) -> None:
     assert invoice_response.status_code == 201
     invoice_id = invoice_response.json()["id"]
 
-    payment_payload = {
+    providers_response = api_client.get("/finance/payment-providers")
+    assert providers_response.status_code == 200
+    providers = providers_response.json()
+    provider_ids = {provider["id"] for provider in providers}
+    assert {"stripe", "paypal", "mtn_momo", "airtel_money"}.issubset(provider_ids)
+
+    initiation_payload = {
         "invoice_id": invoice_id,
         "amount": "500.00",
-        "paid_on": str(date(2024, 6, 2)),
         "currency": "USD",
+        "provider": "stripe",
+        "customer_reference": "STR-INV-500",
     }
-    payment_response = api_client.post("/finance/payments", json=payment_payload)
-    assert payment_response.status_code == 201
+    initiation_response = api_client.post("/finance/payments/initiate", json=initiation_payload)
+    assert initiation_response.status_code == 201
+    initiation_body = initiation_response.json()
+    assert initiation_body["status"] in {"requires_action", "pending"}
+    assert initiation_body["checkout_url"]
+
+    complete_response = api_client.put(
+        f"/finance/payments/{initiation_body['payment_id']}",
+        json={"status": "completed"},
+    )
+    assert complete_response.status_code == 200
 
     expense_payload = {
         "description": "Hotel deposit",

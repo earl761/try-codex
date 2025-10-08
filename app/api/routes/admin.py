@@ -149,6 +149,55 @@ def list_integration_keys(db: Session = Depends(get_db)) -> list[schemas.Integra
     return [schemas.IntegrationCredential.model_validate(cred) for cred in credentials]
 
 
+@router.get("/payment-gateways", response_model=list[schemas.PaymentGateway])
+def list_payment_gateways(db: Session = Depends(get_db)) -> list[schemas.PaymentGateway]:
+    gateways = crud.list_payment_gateways(db)
+    return [schemas.PaymentGateway.model_validate(gateway) for gateway in gateways]
+
+
+@router.post(
+    "/payment-gateways",
+    response_model=schemas.PaymentGateway,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_payment_gateway(
+    payload: schemas.PaymentGatewayCreate, db: Session = Depends(get_db)
+) -> schemas.PaymentGateway:
+    if payload.agency_id and not crud.get_travel_agency(db, payload.agency_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agency not found")
+    gateway = crud.create_payment_gateway(db, payload)
+    return schemas.PaymentGateway.model_validate(gateway)
+
+
+@router.put(
+    "/payment-gateways/{gateway_id}",
+    response_model=schemas.PaymentGateway,
+)
+def update_payment_gateway(
+    gateway_id: Annotated[int, Path(gt=0)],
+    payload: schemas.PaymentGatewayUpdate,
+    db: Session = Depends(get_db),
+) -> schemas.PaymentGateway:
+    gateway = crud.get_payment_gateway(db, gateway_id)
+    if not gateway:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Payment gateway not found")
+    if payload.agency_id and not crud.get_travel_agency(db, payload.agency_id):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agency not found")
+    gateway = crud.update_payment_gateway(db, gateway, payload)
+    return schemas.PaymentGateway.model_validate(gateway)
+
+
+@router.delete("/payment-gateways/{gateway_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_payment_gateway(
+    gateway_id: Annotated[int, Path(gt=0)], db: Session = Depends(get_db)
+) -> Response:
+    gateway = crud.get_payment_gateway(db, gateway_id)
+    if not gateway:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Payment gateway not found")
+    crud.delete_payment_gateway(db, gateway)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @router.get("/notifications", response_model=list[schemas.NotificationLog])
 def list_notifications(db: Session = Depends(get_db)) -> list[schemas.NotificationLog]:
     notifications = crud.list_notifications(db)

@@ -1027,6 +1027,39 @@ def delete_payment(session: Session, payment: models.Payment) -> None:
     session.flush()
 
 
+def create_payment_gateway(
+    session: Session, payload: schemas.PaymentGatewayCreate
+) -> models.PaymentGateway:
+    gateway = models.PaymentGateway(**payload.model_dump())
+    session.add(gateway)
+    session.flush()
+    return gateway
+
+
+def list_payment_gateways(session: Session) -> Sequence[models.PaymentGateway]:
+    statement = select(models.PaymentGateway).order_by(models.PaymentGateway.created_at.desc())
+    return session.scalars(statement).all()
+
+
+def get_payment_gateway(session: Session, gateway_id: int) -> models.PaymentGateway | None:
+    return session.get(models.PaymentGateway, gateway_id)
+
+
+def update_payment_gateway(
+    session: Session, gateway: models.PaymentGateway, payload: schemas.PaymentGatewayUpdate
+) -> models.PaymentGateway:
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        setattr(gateway, field, value)
+    session.add(gateway)
+    session.flush()
+    return gateway
+
+
+def delete_payment_gateway(session: Session, gateway: models.PaymentGateway) -> None:
+    session.delete(gateway)
+    session.flush()
+
+
 def create_expense(session: Session, expense_in: schemas.ExpenseCreate) -> models.Expense:
     expense = models.Expense(**expense_in.model_dump())
     session.add(expense)

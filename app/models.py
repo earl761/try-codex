@@ -11,6 +11,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Integer,
+    JSON,
     Numeric,
     String,
     Text,
@@ -47,6 +48,9 @@ class TravelAgency(Base, TimestampMixin):
     users = relationship("User", back_populates="agency", cascade="all, delete-orphan")
     integrations = relationship(
         "IntegrationCredential", back_populates="agency", cascade="all, delete-orphan"
+    )
+    payment_gateways = relationship(
+        "PaymentGateway", back_populates="agency", cascade="all, delete-orphan"
     )
     clients = relationship("Client", back_populates="agency")
     leads = relationship("Lead", back_populates="agency")
@@ -226,6 +230,11 @@ class Payment(Base, TimestampMixin):
     currency = Column(String(10), nullable=False, default="USD")
     paid_on = Column(Date, default=date.today, nullable=False)
     method = Column(String(50), nullable=True)
+    provider = Column(String(50), nullable=False, default="manual")
+    status = Column(String(50), nullable=False, default="completed")
+    transaction_reference = Column(String(120), nullable=True)
+    fee_amount = Column(Numeric(10, 2), nullable=True)
+    provider_metadata = Column(JSON, nullable=True)
     notes = Column(Text, nullable=True)
 
     invoice = relationship("Invoice", back_populates="payments")
@@ -345,6 +354,21 @@ class IntegrationCredential(Base, TimestampMixin):
     agency_id = Column(Integer, ForeignKey("travel_agencies.id"), nullable=False)
 
     agency = relationship("TravelAgency", back_populates="integrations")
+
+
+class PaymentGateway(Base, TimestampMixin):
+    __tablename__ = "payment_gateways"
+
+    __table_args__ = (UniqueConstraint("agency_id", "provider", name="uq_payment_gateway"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    provider = Column(String(100), nullable=False)
+    label = Column(String(150), nullable=True)
+    credentials = Column(Text, nullable=True)
+    active = Column(Boolean, nullable=False, default=True)
+    agency_id = Column(Integer, ForeignKey("travel_agencies.id"), nullable=True)
+
+    agency = relationship("TravelAgency", back_populates="payment_gateways")
 
 
 class NotificationLog(Base, TimestampMixin):

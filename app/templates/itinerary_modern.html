@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>{{ itinerary.title }} - Modern Layout</title>
+    {% set primary = itinerary.brand_primary_color or '#1a365d' %}
+    {% set secondary = itinerary.brand_secondary_color or '#4299e1' %}
+    <style>
+        @page { margin: 28px; }
+        body {
+            font-family: 'Inter', 'Segoe UI', sans-serif;
+            margin: 0;
+            background: #0f172a;
+            color: #e2e8f0;
+        }
+        .hero {
+            background: linear-gradient(120deg, {{ primary }}, {{ secondary }});
+            padding: 48px 60px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 48px;
+        }
+        .hero h1 { font-size: 2.8em; margin: 0; }
+        .hero p { margin: 6px 0; color: rgba(255,255,255,0.85); }
+        .hero img {
+            max-width: 200px;
+            max-height: 130px;
+            border-radius: 12px;
+            background: rgba(255,255,255,0.2);
+            padding: 12px;
+        }
+        .content {
+            display: grid;
+            grid-template-columns: 320px 1fr;
+            gap: 28px;
+            padding: 36px 48px 60px;
+        }
+        .panel {
+            background: #111c33;
+            border-radius: 24px;
+            padding: 24px;
+            box-shadow: 0 25px 60px rgba(15, 23, 42, 0.35);
+        }
+        .panel h3 { margin-top: 0; text-transform: uppercase; letter-spacing: 0.14em; font-size: 0.85em; color: {{ secondary }}; }
+        .stat {
+            margin-bottom: 18px;
+            padding-bottom: 18px;
+            border-bottom: 1px solid rgba(226,232,240,0.1);
+        }
+        .stat strong { display: block; font-size: 1.6em; color: #fefefe; }
+        .timeline-item {
+            border-left: 4px solid {{ secondary }};
+            margin-left: 12px;
+            padding-left: 28px;
+            padding-bottom: 26px;
+            position: relative;
+        }
+        .timeline-item::before {
+            content: attr(data-day);
+            position: absolute;
+            left: -72px;
+            top: 0;
+            width: 54px;
+            height: 54px;
+            background: {{ secondary }};
+            color: #0f172a;
+            border-radius: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+        }
+        .timeline-item h2 { margin: 0; font-size: 1.6em; color: #f8fafc; }
+        .timeline-item .meta { color: rgba(226,232,240,0.7); font-size: 0.9em; margin: 6px 0 12px; }
+        .timeline-item .description { line-height: 1.7; color: rgba(226,232,240,0.9); }
+        .media-strip {
+            display: flex;
+            gap: 14px;
+            margin-top: 18px;
+        }
+        .media-strip img {
+            width: 180px;
+            height: 120px;
+            object-fit: cover;
+            border-radius: 18px;
+            box-shadow: 0 18px 38px rgba(8, 145, 178, 0.32);
+        }
+        .pill { display: inline-flex; background: rgba(66, 153, 225, 0.14); padding: 4px 12px; border-radius: 999px; color: {{ secondary }}; font-size: 0.75em; letter-spacing: 0.08em; text-transform: uppercase; }
+        .extension-card {
+            background: rgba(15, 23, 42, 0.65);
+            border: 1px solid rgba(226,232,240,0.08);
+            border-radius: 18px;
+            padding: 18px;
+            margin-bottom: 16px;
+        }
+        .note-card {
+            background: rgba(148, 163, 184, 0.12);
+            border-radius: 18px;
+            padding: 18px;
+            margin-bottom: 14px;
+        }
+    </style>
+</head>
+<body>
+    <section class="hero">
+        <div>
+            <h1>{{ itinerary.title }}</h1>
+            <p>{{ itinerary.start_date }} → {{ itinerary.end_date }}</p>
+            <p>{{ itinerary.client.name }}{% if itinerary.client.email %} &lt;{{ itinerary.client.email }}&gt;{% endif %}</p>
+            <div class="pill">{{ itinerary.status|title }}</div>
+        </div>
+        {% if itinerary.brand_logo_url %}
+        <img src="{{ itinerary.brand_logo_url }}" alt="{{ itinerary.title }}">
+        {% endif %}
+    </section>
+
+    <section class="content">
+        <aside class="panel">
+            <h3>Snapshot</h3>
+            <div class="stat">
+                <span>Days</span>
+                <strong>{{ itinerary.items|length }}</strong>
+            </div>
+            {% if itinerary.estimate_amount %}
+            <div class="stat">
+                <span>Estimate</span>
+                <strong>{{ '%.2f'|format(itinerary.estimate_amount) }} {{ itinerary.estimate_currency }}</strong>
+            </div>
+            {% endif %}
+            {% if itinerary.total_price %}
+            <div class="stat">
+                <span>Package Total</span>
+                <strong>{{ '%.2f'|format(itinerary.total_price) }}</strong>
+            </div>
+            {% endif %}
+            {% if itinerary.extensions %}
+            <div class="stat">
+                <span>Extensions</span>
+                <strong>{{ itinerary.extensions|length }}</strong>
+            </div>
+            {% endif %}
+            {% if itinerary.brand_footer_note %}
+            <p>{{ itinerary.brand_footer_note }}</p>
+            {% endif %}
+        </aside>
+
+        <main>
+            {% for item in itinerary.items|sort(attribute='day_number') %}
+            <article class="timeline-item" data-day="Day {{ item.day_number }}">
+                <h2>{{ item.title }}</h2>
+                <p class="meta">
+                    {% if item.location %}{{ item.location }} &bull; {% endif %}
+                    {% if item.start_time or item.end_time %}{{ item.start_time or 'TBC' }} - {{ item.end_time or 'TBC' }}{% endif %}
+                    {% if item.supplier_reference %}&bull; Ref {{ item.supplier_reference }}{% endif %}
+                </p>
+                {% if item.description %}<div class="description">{{ item.description }}</div>{% endif %}
+                {% if item.estimated_cost %}
+                <p class="meta">Estimated: {{ '%.2f'|format(item.estimated_cost) }} {{ item.estimated_currency }}</p>
+                {% endif %}
+                {% if item.media %}
+                <div class="media-strip">
+                    {% for media_link in item.media %}
+                    <figure>
+                        <img src="{{ media_link.asset.optimized_path }}" alt="{{ media_link.asset.alt_text or item.title }}">
+                    </figure>
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </article>
+            {% endfor %}
+
+            {% if itinerary.extensions %}
+            <section>
+                <h2>Custom Enhancements</h2>
+                {% for extension in itinerary.extensions %}
+                <div class="extension-card">
+                    <h3>{{ extension.title }}</h3>
+                    {% if extension.description %}<p>{{ extension.description }}</p>{% endif %}
+                    {% if extension.additional_cost %}
+                    <p class="pill">Add-on: {{ '%.2f'|format(extension.additional_cost) }} {{ extension.currency }}</p>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </section>
+            {% endif %}
+
+            {% if itinerary.notes %}
+            <section>
+                <h2>Know Before You Go</h2>
+                {% for note in itinerary.notes %}
+                <div class="note-card">
+                    <h4>{{ note.title or note.category|title }}</h4>
+                    <p>{{ note.content }}</p>
+                </div>
+                {% endfor %}
+            </section>
+            {% endif %}
+        </main>
+    </section>
+</body>
+</html>

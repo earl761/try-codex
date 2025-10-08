@@ -1,13 +1,18 @@
-"""Finance endpoints covering invoices, payments, and expenses."""
+"""Finance endpoints covering invoices, payments, expenses, and integrations."""
 from __future__ import annotations
 
+from datetime import date
 from typing import Any, List
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session
 
 from ... import crud, models, schemas
-from ...utils import compute_outstanding_balance
+from ...utils import (
+    compute_outstanding_balance,
+    initiate_payment_with_provider,
+    list_supported_payment_providers,
+)
 from ..deps import get_db
 
 router = APIRouter(prefix="/finance", tags=["finance"])
@@ -58,6 +63,30 @@ def delete_invoice(invoice_id: int, db: Session = Depends(get_db)) -> Response:
 
 @router.post("/payments", response_model=schemas.Payment, status_code=status.HTTP_201_CREATED)
 def create_payment(payment_in: schemas.PaymentCreate, db: Session = Depends(get_db)) -> models.Payment:
+    payload = payment_in.model_dump()
+    provider = payload.get("provider", "manual")
+    if provider != "manual" and not payload.get("transaction_reference"):
+        try:
+            initiation = initiate_payment_with_provider(
+                provider,
+                payment_in.amount,
+                payment_in.currency,
+                customer_reference=payment_in.notes,
+            )
+        except ValueError as exc:  # pragma: no cover - validation branch
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        payload.update(
+            {
+                "provider": initiation["provider"],
+                "transaction_reference": initiation["transaction_reference"],
+                "status": initiation["status"],
+                "method": initiation["method"],
+                "fee_amount": initiation["fee_amount"],
+                "provider_metadata": initiation["metadata"],
+            }
+        )
+        payment_in = schemas.PaymentCreate(**payload)
+
     payment = crud.create_payment(db, payment_in)
     db.refresh(payment)
     return payment
@@ -66,6 +95,70 @@ def create_payment(payment_in: schemas.PaymentCreate, db: Session = Depends(get_
 @router.get("/payments", response_model=List[schemas.Payment])
 def list_payments(db: Session = Depends(get_db)) -> List[models.Payment]:
     return list(crud.list_payments(db))
+
+
+@router.get(
+    "/payment-providers",
+    response_model=List[schemas.PaymentProviderInfo],
+    summary="List supported payment providers",
+)
+def payment_providers() -> List[schemas.PaymentProviderInfo]:
+    providers = list_supported_payment_providers()
+    return [schemas.PaymentProviderInfo(**provider) for provider in providers]
+
+
+@router.post(
+    "/payments/initiate",
+    response_model=schemas.PaymentInitiationResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Initiate a payment via a connected provider",
+)
+def initiate_payment(
+    payload: schemas.PaymentInitiationRequest, db: Session = Depends(get_db)
+) -> schemas.PaymentInitiationResponse:
+    invoice = crud.get_invoice(db, payload.invoice_id)
+    if not invoice:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Invoice not found")
+
+    try:
+        result = initiate_payment_with_provider(
+            payload.provider, payload.amount, payload.currency, payload.customer_reference
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    payment = crud.create_payment(
+        db,
+        schemas.PaymentCreate(
+            invoice_id=payload.invoice_id,
+            amount=payload.amount,
+            currency=payload.currency,
+            paid_on=date.today(),
+            method=result["method"],
+            provider=result["provider"],
+            status=result["status"],
+            transaction_reference=result["transaction_reference"],
+            fee_amount=result["fee_amount"],
+            provider_metadata=result["metadata"],
+            notes=payload.customer_reference,
+        ),
+    )
+    db.refresh(payment)
+
+    message = (
+        "Payment requires customer action to complete."
+        if result["checkout_url"]
+        else "Payment processed successfully."
+    )
+
+    return schemas.PaymentInitiationResponse(
+        provider=result["provider"],
+        status=payment.status,
+        transaction_reference=payment.transaction_reference or result["transaction_reference"],
+        checkout_url=result["checkout_url"],
+        message=message,
+        payment_id=payment.id,
+    )
 
 
 @router.put("/payments/{payment_id}", response_model=schemas.Payment)
@@ -133,7 +226,11 @@ def finance_summary(db: Session = Depends(get_db)) -> dict[str, Any]:
     expenses: List[models.Expense] = list(crud.list_expenses(db))
 
     total_invoiced = sum(float(invoice.amount) for invoice in invoices)
-    total_paid = sum(float(payment.amount) for payment in payments)
+    total_paid = sum(
+        float(payment.amount)
+        for payment in payments
+        if (payment.status or "completed").lower() == "completed"
+    )
     total_expenses = sum(float(expense.amount) for expense in expenses)
 
     outstanding = sum(

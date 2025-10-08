@@ -7,6 +7,8 @@ from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, ValidationInfo, field_validator
 
+from .utils import SUPPORTED_PAYMENT_PROVIDERS
+
 
 class TimestampMixin(BaseModel):
     created_at: datetime
@@ -330,13 +332,36 @@ class Invoice(InvoiceBase, TimestampMixin):
     id: int
 
 
+PAYMENT_PROVIDER_IDS: tuple[str, ...] = tuple(SUPPORTED_PAYMENT_PROVIDERS.keys()) + ("manual",)
+
+
 class PaymentBase(BaseModel):
     invoice_id: int
     amount: Decimal
     currency: str = "USD"
     paid_on: date
     method: Optional[str] = None
+    provider: str = Field("manual", description="Payment provider identifier")
+    status: str = Field("completed", description="Processing status e.g. pending, completed")
+    transaction_reference: Optional[str] = Field(
+        None, description="Provider transaction or collection reference"
+    )
+    fee_amount: Optional[Decimal] = Field(
+        None, description="Processing fee charged by the provider"
+    )
+    provider_metadata: Optional[Dict[str, Any]] = Field(
+        default=None, description="Optional provider-specific metadata payload"
+    )
     notes: Optional[str] = None
+
+    @field_validator("provider")
+    @classmethod
+    def validate_provider(cls, value: str) -> str:
+        if value not in PAYMENT_PROVIDER_IDS:
+            raise ValueError(
+                f"Unsupported provider '{value}'. Supported providers: {', '.join(PAYMENT_PROVIDER_IDS)}"
+            )
+        return value
 
 
 class PaymentCreate(PaymentBase):
@@ -349,11 +374,67 @@ class PaymentUpdate(BaseModel):
     currency: Optional[str] = None
     paid_on: Optional[date] = None
     method: Optional[str] = None
+    provider: Optional[str] = None
+    status: Optional[str] = None
+    transaction_reference: Optional[str] = None
+    fee_amount: Optional[Decimal] = None
+    provider_metadata: Optional[Dict[str, Any]] = None
     notes: Optional[str] = None
 
 
 class Payment(PaymentBase, TimestampMixin):
     id: int
+
+
+class PaymentGatewayBase(BaseModel):
+    provider: str
+    label: Optional[str] = None
+    credentials: Optional[str] = None
+    active: bool = True
+    agency_id: Optional[int] = None
+
+
+class PaymentGatewayCreate(PaymentGatewayBase):
+    pass
+
+
+class PaymentGatewayUpdate(BaseModel):
+    provider: Optional[str] = None
+    label: Optional[str] = None
+    credentials: Optional[str] = None
+    active: Optional[bool] = None
+    agency_id: Optional[int] = None
+
+
+class PaymentGateway(PaymentGatewayBase, TimestampMixin):
+    id: int
+
+
+class PaymentProviderInfo(BaseModel):
+    id: str
+    display_name: str
+    payment_type: Literal["mobile_money", "card", "digital_wallet"]
+    supported_currencies: List[str]
+    settlement_timeframe: str
+    requires_checkout_url: bool
+    transaction_fee_percent: float
+
+
+class PaymentInitiationRequest(BaseModel):
+    invoice_id: int
+    amount: Decimal
+    currency: str
+    provider: str
+    customer_reference: Optional[str] = None
+
+
+class PaymentInitiationResponse(BaseModel):
+    provider: str
+    status: str
+    transaction_reference: str
+    checkout_url: Optional[str] = None
+    message: str
+    payment_id: int
 
 
 class ExpenseBase(BaseModel):
