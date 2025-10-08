@@ -16,6 +16,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
+from sqlalchemy import Boolean, CheckConstraint, Column, Date, DateTime, ForeignKey, Integer, Numeric, String, Text
 from sqlalchemy.orm import relationship
 
 from .database import Base
@@ -88,6 +89,8 @@ class Lead(Base, TimestampMixin):
     client = relationship("Client", back_populates="leads")
     agency = relationship("TravelAgency", back_populates="leads")
 
+    client = relationship("Client", back_populates="leads")
+
 
 class TourPackage(Base, TimestampMixin):
     __tablename__ = "tour_packages"
@@ -159,6 +162,8 @@ class ItineraryItem(Base, TimestampMixin):
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
+
+    itinerary = relationship("Itinerary", back_populates="items")
 
 
 class Invoice(Base, TimestampMixin):

@@ -20,6 +20,13 @@
         .media-usage { margin: 0; padding: 6px 8px; font-size: 0.8em; background: {{ secondary }}; color: #fff; text-transform: uppercase; letter-spacing: 0.04em; }
         .extensions, .notes { padding: 16px; border: 1px solid {{ primary }}33; border-radius: 8px; background: {{ primary }}0a; }
         .footer-note { border-top: 2px solid {{ primary }}; padding-top: 16px; font-size: 0.9em; color: #444; }
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; color: #222; }
+        h1, h2, h3 { color: #0b3d59; }
+        .header { border-bottom: 2px solid #0b3d59; margin-bottom: 20px; }
+        .section { margin-bottom: 30px; }
+        .day { margin-bottom: 15px; padding: 10px; border: 1px solid #ccc; border-radius: 6px; }
+        .meta { font-size: 0.9em; color: #555; }
     </style>
 </head>
 <body>
@@ -41,6 +48,15 @@
             <p class="meta">Client Estimate: <strong>{{ '%.2f'|format(itinerary.estimate_amount) }} {{ itinerary.estimate_currency }}</strong></p>
             {% endif %}
         </div>
+        <h1>{{ itinerary.title }}</h1>
+        <p class="meta">{{ itinerary.start_date }} to {{ itinerary.end_date }} &bull; Status: {{ itinerary.status|title }}</p>
+        <p class="meta">Client: {{ itinerary.client.name }}{% if itinerary.client.email %} &lt;{{ itinerary.client.email }}&gt;{% endif %}</p>
+        {% if itinerary.tour_package %}
+        <p class="meta">Package: {{ itinerary.tour_package.name }} ({{ itinerary.tour_package.destination }})</p>
+        {% endif %}
+        {% if itinerary.total_price %}
+        <p class="meta">Total Price: {{ '%.2f'|format(itinerary.total_price) }}</p>
+        {% endif %}
     </div>
 
     <div class="section">
@@ -48,6 +64,7 @@
         {% for item in itinerary.items|sort(attribute='day_number') %}
         <div class="day">
             <h3>Day {{ item.day_number }}: {{ item.title }} <span class="badge">{{ item.category|title }}</span></h3>
+            <h3>Day {{ item.day_number }}: {{ item.title }}</h3>
             {% if item.location %}<p><strong>Location:</strong> {{ item.location }}</p>{% endif %}
             {% if item.start_time or item.end_time %}
                 <p><strong>Time:</strong> {{ item.start_time or 'TBC' }} - {{ item.end_time or 'TBC' }}</p>
@@ -105,5 +122,9 @@
         {{ itinerary.brand_footer_note }}
     </div>
     {% endif %}
+            {% if item.description %}<p>{{ item.description }}</p>{% endif %}
+        </div>
+        {% endfor %}
+    </div>
 </body>
 </html>

@@ -27,6 +27,15 @@ def _ensure_media_directories() -> None:
     for directory in (ORIGINAL_MEDIA_DIR, OPTIMIZED_MEDIA_DIR):
         directory.mkdir(parents=True, exist_ok=True)
 
+"""Utility helpers for itinerary formatting."""
+from __future__ import annotations
+
+from typing import Iterable
+
+from jinja2 import Environment, PackageLoader, select_autoescape
+
+from . import models
+
 
 def render_itinerary(itinerary: models.Itinerary) -> str:
     """Render an itinerary into a printable text/HTML hybrid document."""
@@ -162,3 +171,6 @@ def remove_media_files(asset: models.MediaAsset) -> None:
         file_path = BASE_DIR.parent / relative_path
         if file_path.exists():  # pragma: no branch - simple filesystem check
             file_path.unlink()
+def compute_outstanding_balance(payments: Iterable[models.Payment], amount_due: float) -> float:
+    total_paid = sum(float(payment.amount) for payment in payments)
+    return round(amount_due - total_paid, 2)

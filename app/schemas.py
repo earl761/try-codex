@@ -1,4 +1,5 @@
 """Pydantic schemas powering the Tour Planner API."""
+"""Pydantic schemas describing the API payloads."""
 from __future__ import annotations
 
 from datetime import date, datetime
@@ -6,6 +7,9 @@ from decimal import Decimal
 from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, ValidationInfo, field_validator
+from typing import List, Optional
+
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class TimestampMixin(BaseModel):
@@ -22,6 +26,10 @@ class ClientBase(BaseModel):
     address: Optional[str] = None
     notes: Optional[str] = None
     agency_id: Optional[int] = Field(None, description="Owning travel agency identifier")
+    email: Optional[str] = Field(None, description="Primary email address")
+    phone: Optional[str] = None
+    address: Optional[str] = None
+    notes: Optional[str] = None
 
 
 class ClientCreate(ClientBase):
@@ -35,6 +43,11 @@ class ClientUpdate(BaseModel):
     address: Optional[str] = None
     notes: Optional[str] = None
     agency_id: Optional[int] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    address: Optional[str] = None
+    notes: Optional[str] = None
+
 
 
 class Client(ClientBase, TimestampMixin):
@@ -44,6 +57,7 @@ class Client(ClientBase, TimestampMixin):
 class LeadBase(BaseModel):
     name: str
     email: Optional[EmailStr] = None
+    email: Optional[str] = None
     source: Optional[str] = None
     status: str = Field("new", description="Lead status e.g. new, contacted, qualified")
     notes: Optional[str] = None
@@ -58,6 +72,7 @@ class LeadCreate(LeadBase):
 class LeadUpdate(BaseModel):
     name: Optional[str] = None
     email: Optional[EmailStr] = None
+    email: Optional[str] = None
     source: Optional[str] = None
     status: Optional[str] = None
     notes: Optional[str] = None
@@ -74,6 +89,10 @@ class LeadConversionResult(BaseModel):
     client: Client
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class Lead(LeadBase, TimestampMixin):
+    id: int
 
 
 class TourPackageBase(BaseModel):
@@ -195,6 +214,7 @@ class ItineraryItemCreate(ItineraryItemBase):
     media: List[ItineraryItemMediaCreate] = Field(
         default_factory=list, description="Images that illustrate the day"
     )
+    pass
 
 
 class ItineraryItem(ItineraryItemBase, TimestampMixin):

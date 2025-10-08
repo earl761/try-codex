@@ -41,6 +41,9 @@ def reset_database() -> None:
     Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
     reset_media_storage()
+def reset_database() -> None:
+    Base.metadata.drop_all(bind=engine)
+    Base.metadata.create_all(bind=engine)
 
 
 reset_database()
@@ -92,6 +95,8 @@ def upload_sample_media_asset(client: TestClient) -> int:
 def test_create_itinerary_and_print(api_client: TestClient) -> None:
     client_id = create_sample_client(api_client)
     asset_id = upload_sample_media_asset(api_client)
+def test_create_itinerary_and_print(api_client: TestClient) -> None:
+    client_id = create_sample_client(api_client)
     itinerary_payload = {
         "client_id": client_id,
         "title": "Bali Adventure",
@@ -162,6 +167,13 @@ def test_create_itinerary_and_print(api_client: TestClient) -> None:
     assert "Traveler Guidance" in html
     assert "Client Estimate" in html
     assert "Thank you for choosing Explorer Collective." in html
+
+    printable = api_client.get(f"/itineraries/{itinerary_id}/print")
+    assert printable.status_code == 200
+    body = printable.text
+    assert "Bali Adventure" in body
+    assert "Day 1" in body
+    assert "Nusa Dua" in body
 
 
 def test_finance_summary_flow(api_client: TestClient) -> None:

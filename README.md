@@ -14,6 +14,15 @@ A FastAPI-based backend for travel and tour agencies to manage clients, build pr
 - **Notifications**: Automatic email and WhatsApp notification logs for client, itinerary, finance, supplier, and integration events.
 - **Admin Console**: Manage travel agencies, integration API keys, site settings, and review notification history.
 - **SEO Landing Page**: A marketing-focused landing page powered by Jinja2 with customizable meta tags managed through admin settings.
+A FastAPI-based backend for travel and tour agencies to manage clients, build printable itineraries, and track finances.
+
+## Features
+
+- **Itinerary Builder**: Create multi-day itineraries with detailed day plans and generate printable HTML output.
+- **CRM Tools**: Manage clients and leads, capture notes and statuses, and convert warm leads into clients in one click.
+- **Inventory Management**: Store reusable tour packages.
+- **Finance Module**: Issue invoices, record payments and expenses, and view profitability summaries and sales reports with monthly rollups.
+- **Reporting**: Quick summaries for itinerary statuses and monthly sales performance.
 
 ## Getting Started
 
@@ -59,6 +68,7 @@ app/
 │       ├── media.py
 │       ├── reports.py
 │       ├── suppliers.py
+│       ├── reports.py
 │       └── tour_packages.py
 ├── crud.py          # Database helper operations
 ├── database.py      # SQLAlchemy configuration
@@ -68,6 +78,8 @@ app/
 ├── templates/       # Jinja2 templates for printable itineraries and landing page
 │   ├── itinerary.html
 │   └── landing.html
+├── templates/       # Jinja2 templates for printable itineraries
+│   └── itinerary.html
 ├── utils.py         # Helper utilities
 requirements.txt
 README.md
@@ -111,3 +123,12 @@ Refer to the auto-generated docs for the full list of endpoints and payload sche
 1. **Signup/Login** – Create a user via `/auth/signup` and authenticate via `/auth/login`. If the user has enabled 2FA, `two_factor_required` will be `true` and a valid TOTP code must be supplied on a subsequent login request.
 2. **Enable 2FA** – Call `/auth/2fa/setup` to obtain the provisioning URI and shared secret. After scanning or entering the secret into an authenticator app, confirm the generated code via `/auth/2fa/activate`.
 3. **Notification Logs** – Most client, itinerary, finance, supplier, agency, and integration actions automatically enqueue an email and/or WhatsApp notification log. Administrators can review these entries with `/admin/notifications` or view aggregated counts at `/admin/notifications/summary`.
+- `POST /clients` – create a client record
+- `POST /itineraries` – create an itinerary with day-by-day details
+- `GET /itineraries/{id}/print` – render a printable itinerary document
+- `POST /finance/invoices` – issue an invoice linked to a client or itinerary
+- `POST /leads/{id}/convert` – create a client record from a qualified lead
+- `POST /itineraries/{id}/duplicate` – clone an itinerary as a reusable template
+- `GET /finance/summary` – view totals for invoices, payments, expenses, and profitability
+
+Refer to the auto-generated docs for the full list of endpoints and payload schemas.

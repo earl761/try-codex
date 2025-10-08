@@ -10,6 +10,8 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
 from . import crud, schemas
+from fastapi import FastAPI
+
 from .api import router as api_router
 from .api.deps import get_db
 from .database import Base, engine
@@ -52,6 +54,12 @@ def create_application() -> FastAPI:
         )
 
     @app.get("/health", tags=["health"], summary="Service healthcheck")
+
+def create_application() -> FastAPI:
+    app = FastAPI(title="Tour Planner API", version="2.0.0")
+    app.include_router(api_router)
+
+    @app.get("/", tags=["health"], summary="Service healthcheck")
     def healthcheck() -> dict[str, str]:
         return {"status": "ok", "message": "Tour Planner API is running"}
 
