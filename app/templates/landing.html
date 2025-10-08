@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{{ content.headline }} | Tour Planner</title>
+    <meta name="description" content="{{ content.seo_description }}" />
+    {% if content.meta_keywords %}
+    <meta name="keywords" content="{{ ','.join(content.meta_keywords) }}" />
+    {% endif %}
+    <meta property="og:title" content="{{ content.headline }}" />
+    <meta property="og:description" content="{{ content.seo_description }}" />
+    {% if content.hero_image_url %}
+    <meta property="og:image" content="{{ content.hero_image_url }}" />
+    {% endif %}
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <link rel="canonical" href="https://tour-planner.example.com/" />
+    <style>
+      :root {
+        color-scheme: light dark;
+        --primary: #0f6cbd;
+        --secondary: #0c3c78;
+        --accent: #f7b538;
+        font-family: "Segoe UI", sans-serif;
+      }
+      body {
+        margin: 0;
+        background: linear-gradient(180deg, rgba(15, 108, 189, 0.1), rgba(12, 60, 120, 0.05));
+        color: #12263a;
+      }
+      header {
+        padding: 3rem 1rem 2rem;
+        max-width: 960px;
+        margin: 0 auto;
+        text-align: center;
+      }
+      header h1 {
+        font-size: clamp(2.5rem, 4vw, 3.5rem);
+        margin-bottom: 1rem;
+      }
+      header p {
+        font-size: 1.25rem;
+        margin-bottom: 2rem;
+        color: #2c3e50;
+      }
+      header a {
+        display: inline-block;
+        background: var(--primary);
+        color: white;
+        padding: 0.9rem 2.5rem;
+        border-radius: 999px;
+        text-decoration: none;
+        font-weight: 600;
+        box-shadow: 0 10px 30px rgba(15, 108, 189, 0.25);
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+      }
+      header a:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 14px 40px rgba(15, 108, 189, 0.35);
+      }
+      .features {
+        max-width: 1100px;
+        margin: 0 auto;
+        padding: 0 1rem 4rem;
+        display: grid;
+        gap: 1.5rem;
+        grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      }
+      .feature-card {
+        background: white;
+        border-radius: 20px;
+        padding: 2rem;
+        box-shadow: 0 15px 30px rgba(15, 108, 189, 0.12);
+        border: 1px solid rgba(12, 60, 120, 0.05);
+      }
+      .feature-card h3 {
+        margin-top: 0;
+        color: var(--secondary);
+      }
+      .pricing {
+        background: rgba(255, 255, 255, 0.9);
+        padding: 4rem 1rem 5rem;
+      }
+      .pricing h2 {
+        text-align: center;
+        font-size: clamp(2rem, 3vw, 2.5rem);
+        margin-bottom: 2.5rem;
+        color: var(--secondary);
+      }
+      .package-grid {
+        max-width: 1100px;
+        margin: 0 auto;
+        display: grid;
+        gap: 1.75rem;
+        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      }
+      .package-card {
+        background: linear-gradient(180deg, rgba(15, 108, 189, 0.08), rgba(12, 60, 120, 0.04));
+        border-radius: 24px;
+        padding: 2.5rem 2rem;
+        box-shadow: 0 20px 40px rgba(12, 60, 120, 0.12);
+        border: 1px solid rgba(12, 60, 120, 0.08);
+        display: flex;
+        flex-direction: column;
+        gap: 1.2rem;
+      }
+      .package-card h3 {
+        margin: 0;
+        font-size: 1.5rem;
+        color: var(--secondary);
+      }
+      .package-price {
+        font-size: 2rem;
+        font-weight: 700;
+        margin: 0;
+        color: var(--primary);
+      }
+      .package-price span {
+        font-size: 0.65em;
+        font-weight: 500;
+        color: #2c3e50;
+      }
+      .package-card ul {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+        display: grid;
+        gap: 0.6rem;
+      }
+      .package-card li::before {
+        content: "✔";
+        color: var(--accent);
+        margin-right: 0.5rem;
+      }
+      .package-cta {
+        margin-top: auto;
+        align-self: flex-start;
+        background: white;
+        color: var(--secondary);
+        padding: 0.6rem 1.5rem;
+        border-radius: 999px;
+        border: 1px solid rgba(12, 60, 120, 0.2);
+        text-decoration: none;
+        font-weight: 600;
+        transition: all 0.2s ease;
+      }
+      .package-cta:hover {
+        background: var(--secondary);
+        color: white;
+        box-shadow: 0 15px 30px rgba(12, 60, 120, 0.2);
+      }
+      footer {
+        text-align: center;
+        padding: 2rem 1rem 3rem;
+        color: #5c6b7f;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>{{ content.headline }}</h1>
+      <p>{{ content.subheadline }}</p>
+      <a href="#get-started">{{ content.call_to_action }}</a>
+    </header>
+    <section class="features" id="get-started">
+      <article class="feature-card">
+        <h3>CRM &amp; Lead Automation</h3>
+        <p>Capture enquiries, convert leads to clients, and send automated notifications at every milestone.</p>
+      </article>
+      <article class="feature-card">
+        <h3>Supplier Marketplace</h3>
+        <p>Manage lodge, hotel, transport, and flight partners with live inventory and negotiated rate cards.</p>
+      </article>
+      <article class="feature-card">
+        <h3>Finance Intelligence</h3>
+        <p>Generate invoices, reconcile payments, and track profitability with real-time notifications to your team.</p>
+      </article>
+      <article class="feature-card">
+        <h3>Secure Access</h3>
+        <p>Role-based access, single sign-on readiness, and two-factor authentication keep your business safe.</p>
+      </article>
+    </section>
+    {% if packages %}
+    <section class="pricing" aria-labelledby="packages-heading">
+      <h2 id="packages-heading">Subscription plans built for travel agencies</h2>
+      <div class="package-grid">
+        {% for package in packages %}
+        <article class="package-card">
+          <div>
+            <h3>{{ package.name }}</h3>
+            <p class="package-price">
+              <span>{{ package.currency }}</span> {{ '%.2f'|format(package.price) }}
+              <span>/{{ package.billing_cycle }}</span>
+            </p>
+          </div>
+          <p class="package-description">{{ package.description }}</p>
+          {% if package.features %}
+          <ul>
+            {% for feature in package.features %}
+            <li>{{ feature }}</li>
+            {% endfor %}
+          </ul>
+          {% endif %}
+          <a href="#get-started" class="package-cta">{{ content.call_to_action }}</a>
+        </article>
+        {% endfor %}
+      </div>
+    </section>
+    {% endif %}
+    <footer>
+      &copy; {{ current_year }} Tour Planner. All rights reserved.
+    </footer>
+  </body>
+</html>
