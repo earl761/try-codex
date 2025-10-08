@@ -187,6 +187,14 @@
             font-size: 0.9em;
             color: #4b5563;
             text-align: center;
+            display: grid;
+            gap: 4px;
+        }
+        footer .powered-by {
+            font-size: 0.78em;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: {{ secondary }};
         }
     </style>
 </head>
@@ -297,11 +305,12 @@
         </section>
         {% endif %}
 
-        {% if itinerary.brand_footer_note %}
         <footer>
-            {{ itinerary.brand_footer_note }}
+            {% if itinerary.brand_footer_note %}
+            <div>{{ itinerary.brand_footer_note }}</div>
+            {% endif %}
+            <div class="powered-by">{{ branding.powered_by }}</div>
         </footer>
-        {% endif %}
     </div>
 </body>
 </html>

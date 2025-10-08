@@ -67,6 +67,19 @@
             padding: 12px 0;
         }
         .extension:last-child { border-bottom: none; }
+        .branding-footer {
+            padding: 24px 48px 48px;
+            text-align: center;
+            color: #4b5563;
+            font-size: 0.9em;
+        }
+        .branding-footer .powered-by {
+            margin-top: 8px;
+            font-size: 0.75em;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            color: {{ primary }};
+        }
     </style>
 </head>
 <body>
@@ -141,6 +154,13 @@
             {% endif %}
         </div>
         {% endif %}
+    </section>
+
+    <section class="branding-footer">
+        {% if itinerary.brand_footer_note %}
+        <div>{{ itinerary.brand_footer_note }}</div>
+        {% endif %}
+        <div class="powered-by">{{ branding.powered_by }}</div>
     </section>
 </body>
 </html>

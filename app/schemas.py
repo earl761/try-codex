@@ -723,6 +723,10 @@ class TravelAgencyBase(BaseModel):
     invoice_footer: Optional[str] = Field(
         None, description="Default notes appended to invoices"
     )
+    powered_by_label: Optional[str] = Field(
+        None,
+        description="Branding credit shown on client-facing documents",
+    )
 
 
 class TravelAgencyCreate(TravelAgencyBase):
@@ -743,6 +747,7 @@ class TravelAgencyUpdate(BaseModel):
     brand_primary_color: Optional[str] = None
     brand_secondary_color: Optional[str] = None
     invoice_footer: Optional[str] = None
+    powered_by_label: Optional[str] = None
 
 
 class TravelAgency(TravelAgencyBase, TimestampMixin):
@@ -757,6 +762,7 @@ class UserBase(BaseModel):
     agency_id: Optional[int] = None
     is_active: bool = True
     is_admin: bool = False
+    is_super_admin: bool = False
 
 
 class UserCreate(UserBase):
@@ -770,6 +776,7 @@ class UserUpdate(BaseModel):
     is_active: Optional[bool] = None
     is_admin: Optional[bool] = None
     agency_id: Optional[int] = None
+    is_super_admin: Optional[bool] = None
 
 
 class User(UserBase, TimestampMixin):
@@ -875,6 +882,15 @@ class LandingPageContent(BaseModel):
     subheadline: str
     call_to_action: str
     seo_description: str
+    hero_image_url: Optional[str] = None
+    meta_keywords: Optional[List[str]] = None
+
+
+class LandingPageContentUpdate(BaseModel):
+    headline: Optional[str] = None
+    subheadline: Optional[str] = None
+    call_to_action: Optional[str] = None
+    seo_description: Optional[str] = None
     hero_image_url: Optional[str] = None
     meta_keywords: Optional[List[str]] = None
 

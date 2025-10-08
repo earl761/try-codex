@@ -44,6 +44,7 @@ class TravelAgency(Base, TimestampMixin):
     brand_primary_color = Column(String(20), nullable=True)
     brand_secondary_color = Column(String(20), nullable=True)
     invoice_footer = Column(Text, nullable=True)
+    powered_by_label = Column(String(200), nullable=True)
 
     users = relationship("User", back_populates="agency", cascade="all, delete-orphan")
     integrations = relationship(
@@ -347,6 +348,7 @@ class User(Base, TimestampMixin):
     whatsapp_number = Column(String(50), nullable=True)
     is_active = Column(Boolean, nullable=False, default=True)
     is_admin = Column(Boolean, nullable=False, default=False)
+    is_super_admin = Column(Boolean, nullable=False, default=False)
     agency_id = Column(Integer, ForeignKey("travel_agencies.id"), nullable=True)
     two_factor_secret = Column(String(32), nullable=True)
     two_factor_enabled = Column(Boolean, nullable=False, default=False)

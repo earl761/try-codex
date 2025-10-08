@@ -20,6 +20,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from app import crud, schemas  # noqa: E402
 from app.database import Base  # noqa: E402
 from app.main import app, get_db  # noqa: E402
 from app.utils import MEDIA_ROOT  # noqa: E402
@@ -57,6 +58,22 @@ def override_get_db() -> Generator[Session, None, None]:
 
 
 app.dependency_overrides[get_db] = override_get_db
+
+
+def create_super_admin_user(email: str = "founder@tourplanner.example") -> str:
+    with TestingSessionLocal() as session:
+        crud.create_user(
+            session,
+            schemas.UserCreate(
+                email=email,
+                password="SuperAdmin#2024",
+                full_name="Platform Owner",
+                is_admin=True,
+                is_super_admin=True,
+            ),
+        )
+        session.commit()
+    return email
 
 
 @pytest.fixture
@@ -158,6 +175,7 @@ def test_create_itinerary_and_print(api_client: TestClient) -> None:
     assert classic.status_code == 200
     classic_html = classic.text
     assert "Bali Adventure" in classic_html
+    assert "Powered by Tour Planner" in classic_html
     assert "Day 1" in classic_html
     assert "Extensions & Enhancements" in classic_html
     assert "Travel Briefing" in classic_html
@@ -493,6 +511,7 @@ def test_authentication_with_two_factor(api_client: TestClient) -> None:
 
 
 def test_admin_controls_and_landing_page(api_client: TestClient) -> None:
+    super_admin_email = create_super_admin_user()
     agency_response = api_client.post(
         "/admin/agencies",
         json={
@@ -503,7 +522,9 @@ def test_admin_controls_and_landing_page(api_client: TestClient) -> None:
         },
     )
     assert agency_response.status_code == 201
-    agency_id = agency_response.json()["id"]
+    agency_body = agency_response.json()
+    agency_id = agency_body["id"]
+    assert agency_body["powered_by_label"].endswith("Powered by Tour Planner")
 
     update_response = api_client.put(
         f"/admin/agencies/{agency_id}",
@@ -530,21 +551,42 @@ def test_admin_controls_and_landing_page(api_client: TestClient) -> None:
     assert updated_credential.status_code == 200
     assert updated_credential.json()["description"] == "Sandbox key"
 
-    settings_response = api_client.put(
-        "/admin/settings/headline",
-        json={"value": "Design bespoke tours in minutes"},
+    landing_update_forbidden = api_client.put(
+        "/admin/landing-page",
+        json={"headline": "Design bespoke tours in minutes"},
     )
-    assert settings_response.status_code == 200
-    keywords_response = api_client.put(
-        "/admin/settings/meta_keywords",
-        json={"value": "travel software,itinerary builder,crm"},
+    assert landing_update_forbidden.status_code == 403
+
+    landing_payload = {
+        "headline": "Design bespoke tours in minutes",
+        "subheadline": "Scale your agency with automation and insight.",
+        "call_to_action": "Book a demo",
+        "seo_description": "Travel CRM and itinerary software for ambitious agencies.",
+        "hero_image_url": "https://cdn.example.com/hero.png",
+        "meta_keywords": ["travel software", "itinerary builder", "crm"],
+    }
+    landing_headers = {"X-Admin-Email": super_admin_email}
+    landing_update = api_client.put(
+        "/admin/landing-page",
+        json=landing_payload,
+        headers=landing_headers,
     )
-    assert keywords_response.status_code == 200
+    assert landing_update.status_code == 200
+    landing_body = landing_update.json()
+    assert landing_body["headline"] == landing_payload["headline"]
+    assert landing_body["meta_keywords"] == landing_payload["meta_keywords"]
+
+    landing_get_forbidden = api_client.get("/admin/landing-page")
+    assert landing_get_forbidden.status_code == 403
+    landing_get = api_client.get("/admin/landing-page", headers=landing_headers)
+    assert landing_get.status_code == 200
+    assert landing_get.json()["seo_description"] == landing_payload["seo_description"]
 
     landing_page = api_client.get("/")
     assert landing_page.status_code == 200
-    assert "Design bespoke tours in minutes" in landing_page.text
-    assert "meta name=\"keywords\"" in landing_page.text
+    assert landing_payload["headline"] in landing_page.text
+    assert landing_payload["call_to_action"] in landing_page.text
+    assert "travel software,itinerary builder,crm" in landing_page.text
 
     notifications = api_client.get("/admin/notifications")
     assert notifications.status_code == 200

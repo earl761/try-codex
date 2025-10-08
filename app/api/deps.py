@@ -3,12 +3,12 @@ from __future__ import annotations
 
 import json
 from datetime import date
-from typing import Generator, List, Optional
+from typing import Annotated, Generator, List, Optional
 
-from fastapi import HTTPException, Query, status
+from fastapi import Depends, Header, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
-from .. import schemas
+from .. import crud, schemas
 from ..database import SessionLocal
 
 
@@ -83,3 +83,25 @@ def get_flight_search_request(
         passengers=passengers,
         travel_class=travel_class,
     )
+
+
+def require_super_admin(
+    admin_email: Annotated[str | None, Header(alias="X-Admin-Email")] = None,
+    db: Session = Depends(get_db),
+):
+    """Ensure the request is authenticated as a super administrator."""
+
+    if not admin_email:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Super admin privileges required",
+        )
+
+    user = crud.get_user_by_email(db, admin_email)
+    if not user or not user.is_super_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Super admin privileges required",
+        )
+
+    return user

@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Path, Query, Response, st
 from sqlalchemy.orm import Session
 
 from ... import crud, schemas
-from ..deps import get_db
+from ..deps import get_db, require_super_admin
 
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -219,6 +219,22 @@ def list_settings(db: Session = Depends(get_db)) -> list[schemas.SiteSetting]:
 def update_setting(key: str, payload: schemas.SiteSettingUpdate, db: Session = Depends(get_db)) -> schemas.SiteSetting:
     setting = crud.upsert_site_setting(db, key=key, value=payload.value)
     return schemas.SiteSetting.model_validate(setting)
+
+
+@router.get("/landing-page", response_model=schemas.LandingPageContent)
+def get_landing_page(
+    db: Session = Depends(get_db), _=Depends(require_super_admin)
+) -> schemas.LandingPageContent:
+    return crud.get_landing_page_content(db)
+
+
+@router.put("/landing-page", response_model=schemas.LandingPageContent)
+def update_landing_page(
+    payload: schemas.LandingPageContentUpdate,
+    db: Session = Depends(get_db),
+    _=Depends(require_super_admin),
+) -> schemas.LandingPageContent:
+    return crud.update_landing_page_content(db, payload)
 
 
 @router.get("/media", response_model=list[schemas.MediaAsset])

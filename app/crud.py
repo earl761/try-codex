@@ -17,6 +17,12 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from . import models, schemas, utils
+from .constants import (
+    APP_NAME,
+    DEFAULT_LANDING_PAGE,
+    DEFAULT_POWERED_BY_LABEL,
+    LANDING_PAGE_TEXT_FIELDS,
+)
 
 pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 
@@ -46,6 +52,16 @@ def _ensure_package_slug(session: Session, slug: str) -> str:
         slug = f"{base}-{counter}"
         counter += 1
     return slug
+
+
+def _coerce_powered_by_label(name: str, label: Optional[str]) -> str:
+    candidate = (label or "").strip()
+    if not candidate:
+        candidate = f"{name} • {DEFAULT_POWERED_BY_LABEL}"
+    elif APP_NAME.lower() not in candidate.lower():
+        separator = " • " if "•" not in candidate else " "
+        candidate = f"{candidate}{separator}{DEFAULT_POWERED_BY_LABEL}"
+    return candidate
 
 
 def _prepare_tags(tags: Optional[list[str] | str]) -> str | None:
@@ -174,6 +190,9 @@ def create_travel_agency(session: Session, agency_in: schemas.TravelAgencyCreate
     data = agency_in.model_dump()
     slug = data.pop("slug") or _slugify(data["name"])
     data["slug"] = _ensure_unique_slug(session, slug)
+    data["powered_by_label"] = _coerce_powered_by_label(
+        data["name"], data.get("powered_by_label")
+    )
     agency = models.TravelAgency(**data)
     session.add(agency)
     session.flush()
@@ -206,6 +225,11 @@ def update_travel_agency(
         data.setdefault("slug", _slugify(data["name"]))
     if "slug" in data:
         data["slug"] = _ensure_unique_slug(session, data["slug"])
+    if "powered_by_label" in data or "name" in data:
+        data["powered_by_label"] = _coerce_powered_by_label(
+            data.get("name", agency.name),
+            data.get("powered_by_label", agency.powered_by_label),
+        )
     for field, value in data.items():
         setattr(agency, field, value)
     session.add(agency)
@@ -457,6 +481,7 @@ def create_user(session: Session, user_in: schemas.UserCreate) -> models.User:
         agency_id=user_in.agency_id,
         is_active=user_in.is_active,
         is_admin=user_in.is_admin,
+        is_super_admin=user_in.is_super_admin,
     )
     session.add(user)
     session.flush()
@@ -1479,6 +1504,45 @@ def upsert_site_setting(
 def list_site_settings(session: Session) -> Sequence[models.SiteSetting]:
     statement = select(models.SiteSetting).order_by(models.SiteSetting.key)
     return session.scalars(statement).all()
+
+
+def get_landing_page_content(session: Session) -> schemas.LandingPageContent:
+    settings_map = {setting.key: setting.value for setting in list_site_settings(session)}
+    data: dict[str, object] = {}
+
+    for field in LANDING_PAGE_TEXT_FIELDS:
+        if field in settings_map and settings_map[field] is not None:
+            data[field] = settings_map[field]
+        elif field in DEFAULT_LANDING_PAGE:
+            data[field] = DEFAULT_LANDING_PAGE[field]
+
+    keywords_raw = settings_map.get("meta_keywords")
+    if keywords_raw is not None:
+        keywords = [piece.strip() for piece in keywords_raw.split(",") if piece.strip()]
+        data["meta_keywords"] = keywords or None
+    else:
+        default_keywords = DEFAULT_LANDING_PAGE.get("meta_keywords") or []
+        data["meta_keywords"] = list(default_keywords) if default_keywords else None
+
+    return schemas.LandingPageContent(**data)
+
+
+def update_landing_page_content(
+    session: Session, payload: schemas.LandingPageContentUpdate
+) -> schemas.LandingPageContent:
+    data = payload.model_dump(exclude_unset=True)
+    for field in LANDING_PAGE_TEXT_FIELDS:
+        if field in data:
+            value = data[field] if data[field] is not None else ""
+            upsert_site_setting(session, key=field, value=str(value))
+
+    if "meta_keywords" in data:
+        keywords = data["meta_keywords"] or []
+        joined = ",".join(keyword.strip() for keyword in keywords if keyword and keyword.strip())
+        upsert_site_setting(session, key="meta_keywords", value=joined)
+
+    session.flush()
+    return get_landing_page_content(session)
 
 
 def list_notifications(session: Session, limit: int = 100) -> Sequence[models.NotificationLog]:

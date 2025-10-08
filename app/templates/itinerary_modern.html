@@ -43,6 +43,13 @@
             box-shadow: 0 25px 60px rgba(15, 23, 42, 0.35);
         }
         .panel h3 { margin-top: 0; text-transform: uppercase; letter-spacing: 0.14em; font-size: 0.85em; color: {{ secondary }}; }
+        .panel .powered-by {
+            margin-top: 18px;
+            font-size: 0.7em;
+            letter-spacing: 0.16em;
+            text-transform: uppercase;
+            color: rgba(226,232,240,0.7);
+        }
         .stat {
             margin-bottom: 18px;
             padding-bottom: 18px;
@@ -143,6 +150,7 @@
             {% if itinerary.brand_footer_note %}
             <p>{{ itinerary.brand_footer_note }}</p>
             {% endif %}
+            <p class="powered-by">{{ branding.powered_by }}</p>
         </aside>
 
         <main>

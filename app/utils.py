@@ -13,6 +13,7 @@ from jinja2 import Environment, PackageLoader, select_autoescape
 from PIL import Image
 
 from . import models
+from .constants import APP_NAME, DEFAULT_POWERED_BY_LABEL
 
 BASE_DIR = Path(__file__).resolve().parent
 MEDIA_ROOT = BASE_DIR / "media_storage"
@@ -88,6 +89,15 @@ def _ensure_media_directories() -> None:
         directory.mkdir(parents=True, exist_ok=True)
 
 
+def _resolve_branding_context(
+    agency: Optional[models.TravelAgency],
+) -> dict[str, Optional[object]]:
+    powered_by = DEFAULT_POWERED_BY_LABEL
+    if agency:
+        powered_by = agency.powered_by_label or f"{agency.name} • {DEFAULT_POWERED_BY_LABEL}"
+    return {"agency": agency, "powered_by": powered_by, "app_name": APP_NAME}
+
+
 def render_itinerary(itinerary: models.Itinerary, layout: str = "classic") -> str:
     """Render an itinerary into a printable HTML document with the desired layout."""
 
@@ -96,7 +106,13 @@ def render_itinerary(itinerary: models.Itinerary, layout: str = "classic") -> st
         normalized_layout, ITINERARY_LAYOUT_TEMPLATES["classic"]
     )
     template = _ENV.get_template(template_name)
-    return template.render(itinerary=itinerary, selected_layout=normalized_layout)
+    agency = getattr(getattr(itinerary, "client", None), "agency", None)
+    branding = _resolve_branding_context(agency)
+    return template.render(
+        itinerary=itinerary,
+        selected_layout=normalized_layout,
+        branding=branding,
+    )
 
 
 def optimize_image_upload(data: bytes, filename: str) -> dict[str, int | str]:
@@ -390,7 +406,8 @@ def render_flight_ticket(booking: models.FlightBooking) -> str:
     """Render a printable flight ticket confirmation for a booking."""
 
     template = _ENV.get_template(FLIGHT_TICKET_TEMPLATE)
-    return template.render(booking=booking)
+    branding = _resolve_branding_context(getattr(booking, "agency", None))
+    return template.render(booking=booking, branding=branding)
 
 
 def initiate_payment_with_provider(
