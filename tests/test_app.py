@@ -107,6 +107,37 @@ def upload_sample_media_asset(client: TestClient) -> int:
     return body["id"]
 
 
+def create_sample_itinerary(client: TestClient, client_id: int) -> int:
+    payload = {
+        "client_id": client_id,
+        "title": "Collaborative Safari",
+        "start_date": str(date(2024, 7, 1)),
+        "end_date": str(date(2024, 7, 5)),
+        "status": "proposal",
+        "estimate_amount": "1200.00",
+        "estimate_currency": "USD",
+        "items": [
+            {
+                "day_number": 1,
+                "title": "Arrival",
+                "description": "Airport transfer and welcome dinner.",
+                "location": "Arusha",
+                "category": "transport",
+                "estimated_cost": "150.00",
+            }
+        ],
+        "notes": [
+            {
+                "category": "custom",
+                "content": "Remember to carry copies of your passport and insurance.",
+            }
+        ],
+    }
+    response = client.post("/itineraries", json=payload)
+    assert response.status_code == 201
+    return response.json()["id"]
+
+
 def test_create_itinerary_and_print(api_client: TestClient) -> None:
     client_id = create_sample_client(api_client)
     asset_id = upload_sample_media_asset(api_client)
@@ -818,3 +849,126 @@ def test_flight_booking_panel_flow(api_client: TestClient) -> None:
     assert ticket_html.status_code == 200
     assert booking_body["pnr"] in ticket_html.text
     assert "Ava Flyer" in ticket_html.text
+
+def test_itinerary_collaboration_and_documents(api_client: TestClient) -> None:
+    client_id = create_sample_client(api_client)
+    itinerary_id = create_sample_itinerary(api_client, client_id)
+
+    with TestingSessionLocal() as session:
+        collaborator = crud.create_user(
+            session,
+            schemas.UserCreate(
+                email="collab@example.com",
+                password="Collaborate123!",
+                full_name="Collaborator Coach",
+            ),
+        )
+        session.commit()
+        collaborator_id = collaborator.id
+
+    collab_response = api_client.post(
+        f"/itineraries/{itinerary_id}/collaborators",
+        json={"user_id": collaborator_id, "role": "editor", "permissions": ["comment"]},
+    )
+    assert collab_response.status_code == 201
+    assert collab_response.json()["user"]["email"] == "collab@example.com"
+
+    collaborators = api_client.get(f"/itineraries/{itinerary_id}/collaborators")
+    assert collaborators.status_code == 200
+    assert len(collaborators.json()) == 1
+
+    comment_response = api_client.post(
+        f"/itineraries/{itinerary_id}/comments",
+        json={"author_id": collaborator_id, "body": "Can we add a sunset cruise?"},
+    )
+    assert comment_response.status_code == 201
+    comment_id = comment_response.json()["id"]
+
+    resolve_response = api_client.post(
+        f"/itineraries/{itinerary_id}/comments/{comment_id}/resolve",
+        json={"resolved": True},
+    )
+    assert resolve_response.status_code == 200
+    assert resolve_response.json()["resolved"] is True
+
+    update_response = api_client.put(
+        f"/itineraries/{itinerary_id}",
+        json={"status": "sent", "target_margin": "20.00", "markup_strategy": "percentage"},
+    )
+    assert update_response.status_code == 200
+
+    versions = api_client.get(f"/itineraries/{itinerary_id}/versions")
+    assert versions.status_code == 200
+    assert versions.json()[0]["version_number"] >= 1
+
+    pricing = api_client.get(f"/itineraries/{itinerary_id}/pricing")
+    assert pricing.status_code == 200
+    pricing_body = pricing.json()
+    assert pricing_body["total_price"]
+
+    suggestions = api_client.get(
+        f"/itineraries/{itinerary_id}/suggestions", params={"focus": "pricing"}
+    )
+    assert suggestions.status_code == 200
+    assert len(suggestions.json()) >= 1
+
+    brief = api_client.get(f"/itineraries/{itinerary_id}/documents/travel_brief")
+    assert brief.status_code == 200
+    assert "Travel Brief" in brief.text
+
+    visa_letter = api_client.get(f"/itineraries/{itinerary_id}/documents/visa_letter")
+    assert visa_letter.status_code == 200
+    assert "Visa Support Letter" in visa_letter.text
+
+    bad_doc = api_client.get(f"/itineraries/{itinerary_id}/documents/unknown")
+    assert bad_doc.status_code == 400
+
+    itinerary_detail = api_client.get(f"/itineraries/{itinerary_id}")
+    assert itinerary_detail.status_code == 200
+    body = itinerary_detail.json()
+    assert body["comments"][0]["body"] == "Can we add a sunset cruise?"
+    assert body["collaborators"][0]["user"]["email"] == "collab@example.com"
+
+
+def test_portal_invitation_and_analytics(api_client: TestClient) -> None:
+    client_id = create_sample_client(api_client)
+    itinerary_id = create_sample_itinerary(api_client, client_id)
+
+    invitation_response = api_client.post(
+        "/portal/invitations",
+        json={"itinerary_id": itinerary_id, "client_id": client_id, "expires_in_days": 3},
+    )
+    assert invitation_response.status_code == 201
+    invitation_body = invitation_response.json()
+    token = invitation_body["token"]
+
+    portal_view = api_client.get(f"/portal/invitations/{token}")
+    assert portal_view.status_code == 200
+    view_body = portal_view.json()
+    assert view_body["itinerary"]["id"] == itinerary_id
+    assert "available_documents" in view_body
+
+    portal_page = api_client.get(f"/portal/invitations/{token}/page")
+    assert portal_page.status_code == 200
+    assert "Client Portal" in portal_page.text
+
+    decision_response = api_client.post(
+        f"/portal/invitations/{token}/decision", json={"decision": "approved"}
+    )
+    assert decision_response.status_code == 200
+    assert decision_response.json()["status"] == "approved"
+
+    waiver_response = api_client.post(
+        f"/portal/invitations/{token}/waiver", json={"accepted": True}
+    )
+    assert waiver_response.status_code == 200
+    assert waiver_response.json()["waiver_signed"] is True
+
+    analytics = api_client.get("/admin/analytics/overview")
+    assert analytics.status_code == 200
+    analytics_body = analytics.json()
+    assert analytics_body["total_clients"] == 1
+    assert analytics_body["total_itineraries"] >= 1
+
+    delete_response = api_client.delete(f"/portal/invitations/{token}")
+    assert delete_response.status_code == 204

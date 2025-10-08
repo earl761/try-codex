@@ -6,13 +6,16 @@ from decimal import Decimal
 from io import BytesIO
 from pathlib import Path
 from random import randint
-from typing import Dict, Iterable, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional
 from uuid import uuid4
 
 from jinja2 import Environment, PackageLoader, select_autoescape
 from PIL import Image
 
 from . import models
+
+if TYPE_CHECKING:  # pragma: no cover - typing helper
+    from . import schemas
 from .constants import APP_NAME, DEFAULT_POWERED_BY_LABEL
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -76,6 +79,12 @@ ITINERARY_LAYOUT_TEMPLATES: Dict[str, str] = {
 }
 
 FLIGHT_TICKET_TEMPLATE = "flight_ticket.html"
+TRAVEL_DOCUMENT_TEMPLATES: Dict[str, str] = {
+    "travel_brief": "travel_brief.html",
+    "visa_letter": "visa_letter.html",
+    "waiver": "traveler_waiver.html",
+}
+PORTAL_TEMPLATE = "client_portal.html"
 
 _ENV = Environment(
     loader=PackageLoader("app", "templates"),
@@ -98,6 +107,19 @@ def _resolve_branding_context(
     return {"agency": agency, "powered_by": powered_by, "app_name": APP_NAME}
 
 
+def build_branding_context(itinerary: models.Itinerary) -> dict[str, Any]:
+    agency = getattr(getattr(itinerary, "client", None), "agency", None)
+    base = _resolve_branding_context(agency)
+    return {
+        **base,
+        "logo": itinerary.brand_logo_url or getattr(agency, "logo_url", None),
+        "primary_color": itinerary.brand_primary_color
+        or getattr(agency, "brand_primary_color", None),
+        "secondary_color": itinerary.brand_secondary_color
+        or getattr(agency, "brand_secondary_color", None),
+    }
+
+
 def render_itinerary(itinerary: models.Itinerary, layout: str = "classic") -> str:
     """Render an itinerary into a printable HTML document with the desired layout."""
 
@@ -106,13 +128,102 @@ def render_itinerary(itinerary: models.Itinerary, layout: str = "classic") -> st
         normalized_layout, ITINERARY_LAYOUT_TEMPLATES["classic"]
     )
     template = _ENV.get_template(template_name)
-    agency = getattr(getattr(itinerary, "client", None), "agency", None)
-    branding = _resolve_branding_context(agency)
+    branding = build_branding_context(itinerary)
     return template.render(
         itinerary=itinerary,
         selected_layout=normalized_layout,
         branding=branding,
     )
+
+
+def render_travel_document(
+    itinerary: models.Itinerary,
+    document_type: str,
+    *,
+    context: Optional[Dict[str, Any]] = None,
+) -> str:
+    normalized = document_type.lower()
+    template_name = TRAVEL_DOCUMENT_TEMPLATES.get(normalized)
+    if not template_name:
+        raise ValueError(f"Unsupported document type '{document_type}'")
+    template = _ENV.get_template(template_name)
+    payload = {
+        "itinerary": itinerary,
+        "branding": build_branding_context(itinerary),
+        "generated_at": datetime.utcnow(),
+    }
+    if context:
+        payload.update(context)
+    return template.render(**payload)
+
+
+def render_portal_page(view: "schemas.PortalView", token: str) -> str:
+    template = _ENV.get_template(PORTAL_TEMPLATE)
+    return template.render(portal=view, token=token)
+
+
+def generate_itinerary_suggestions(
+    itinerary: models.Itinerary, *, focus: Optional[str] = None
+) -> List[Dict[str, Any]]:
+    focus = (focus or "general").lower()
+    suggestions: List[Dict[str, Any]] = []
+
+    total_days = len({item.day_number for item in itinerary.items})
+    base_cost = sum(
+        Decimal(item.estimated_cost) for item in itinerary.items if item.estimated_cost
+    )
+
+    if focus in {"general", "pricing"}:
+        markup = Decimal(itinerary.calculated_margin or 0)
+        if base_cost and markup / base_cost < Decimal("0.2"):
+            suggestions.append(
+                {
+                    "title": "Consider increasing markup",
+                    "description": "Current margin is below 20%. Review supplier costs or adjust the pricing strategy to protect profitability.",
+                    "confidence": 0.7,
+                }
+            )
+
+    if focus in {"general", "activities"} and total_days < 3:
+        suggestions.append(
+            {
+                "title": "Add immersive experiences",
+                "description": "Short itineraries benefit from signature experiences such as cooking classes or private guides to create standout memories.",
+                "confidence": 0.6,
+            }
+        )
+
+    note_categories = {note.category for note in itinerary.notes}
+    if focus in {"general", "traveler_support"} and "visa" not in note_categories:
+        suggestions.append(
+            {
+                "title": "Document visa guidance",
+                "description": "Include visa or entry requirement notes to reduce traveler anxiety before departure.",
+                "confidence": 0.8,
+            }
+        )
+
+    if focus in {"wellness", "general"} and not any(
+        item.category == "accommodation" and "spa" in (item.description or "").lower()
+        for item in itinerary.items
+    ):
+        suggestions.append(
+            {
+                "title": "Offer a wellness upgrade",
+                "description": "Consider adding a spa afternoon or wellness-focused accommodation to encourage upsell opportunities.",
+                "confidence": 0.55,
+            }
+        )
+
+    if not suggestions:
+        suggestions.append(
+            {
+                "title": "Itinerary looks balanced",
+                "description": "No immediate enhancements detected. Share with collaborators for additional inspiration.",
+                "confidence": 0.4,
+            }
+        )
+    return suggestions
 
 
 def optimize_image_upload(data: bytes, filename: str) -> dict[str, int | str]:

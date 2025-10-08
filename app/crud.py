@@ -5,7 +5,7 @@ import json
 import re
 import secrets
 from collections.abc import Sequence
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import Any, Dict, Optional
 
@@ -13,7 +13,7 @@ import string
 
 import pyotp
 from passlib.context import CryptContext
-from sqlalchemy import select
+from sqlalchemy import desc, func, select
 from sqlalchemy.orm import Session, selectinload
 
 from . import models, schemas, utils
@@ -734,6 +734,56 @@ def delete_tour_package(session: Session, package: models.TourPackage) -> None:
 # Itinerary helpers
 
 
+def _calculate_itinerary_cost(itinerary: models.Itinerary) -> Decimal:
+    total = Decimal("0")
+    for item in itinerary.items:
+        if item.estimated_cost is not None:
+            total += Decimal(item.estimated_cost)
+    for extension in itinerary.extensions:
+        if extension.additional_cost is not None:
+            total += Decimal(extension.additional_cost)
+    return total
+
+
+def _apply_pricing_strategy(itinerary: models.Itinerary) -> None:
+    base_cost = _calculate_itinerary_cost(itinerary)
+    strategy = (itinerary.markup_strategy or "flat").lower()
+    target = itinerary.target_margin or Decimal("0")
+    if not isinstance(target, Decimal):
+        target = Decimal(str(target))
+
+    markup_value = Decimal("0")
+    if strategy == "percentage":
+        markup_value = (base_cost * target / Decimal("100")).quantize(Decimal("0.01"))
+    else:
+        markup_value = Decimal(target).quantize(Decimal("0.01")) if target else Decimal("0")
+
+    if itinerary.total_price is None or itinerary.total_price < base_cost:
+        itinerary.total_price = (base_cost + markup_value).quantize(Decimal("0.01"))
+
+    itinerary.calculated_margin = (Decimal(itinerary.total_price or 0) - base_cost).quantize(
+        Decimal("0.01")
+    )
+
+    if itinerary.estimate_amount is None and itinerary.total_price is not None:
+        itinerary.estimate_amount = itinerary.total_price
+
+
+def get_pricing_summary(itinerary: models.Itinerary) -> schemas.PricingSummary:
+    base_cost = _calculate_itinerary_cost(itinerary)
+    total_price = Decimal(itinerary.total_price or itinerary.estimate_amount or 0)
+    markup_value = total_price - base_cost
+    margin_percent = float(0)
+    if base_cost:
+        margin_percent = float((markup_value / base_cost) * Decimal("100"))
+    return schemas.PricingSummary(
+        base_cost=base_cost.quantize(Decimal("0.01")),
+        markup_value=markup_value.quantize(Decimal("0.01")),
+        total_price=total_price.quantize(Decimal("0.01")) if total_price else Decimal("0.00"),
+        margin_percent=round(margin_percent, 2),
+    )
+
+
 def create_itinerary(session: Session, itinerary_in: schemas.ItineraryCreate) -> models.Itinerary:
     payload = itinerary_in.model_dump()
     items_data = payload.pop("items", [])
@@ -775,6 +825,23 @@ def create_itinerary(session: Session, itinerary_in: schemas.ItineraryCreate) ->
     session.add(itinerary)
     session.flush()
 
+    _apply_pricing_strategy(itinerary)
+
+    record_itinerary_version(
+        session,
+        itinerary,
+        schemas.ItineraryVersionCreate(
+            summary="Initial draft",
+            snapshot={
+                "status": itinerary.status,
+                "estimate_amount": str(itinerary.estimate_amount)
+                if itinerary.estimate_amount
+                else None,
+                "total_price": str(itinerary.total_price) if itinerary.total_price else None,
+            },
+        ),
+    )
+
     client = itinerary.client
     _notify_contact(
         session,
@@ -799,6 +866,13 @@ def list_itineraries(session: Session) -> Sequence[models.Itinerary]:
             selectinload(models.Itinerary.tour_package),
             selectinload(models.Itinerary.extensions),
             selectinload(models.Itinerary.notes),
+            selectinload(models.Itinerary.collaborators).selectinload(
+                models.ItineraryCollaborator.user
+            ),
+            selectinload(models.Itinerary.comments).selectinload(
+                models.ItineraryComment.author
+            ),
+            selectinload(models.Itinerary.versions),
         )
         .order_by(models.Itinerary.start_date)
     )
@@ -817,6 +891,14 @@ def get_itinerary(session: Session, itinerary_id: int) -> models.Itinerary | Non
             selectinload(models.Itinerary.tour_package),
             selectinload(models.Itinerary.extensions),
             selectinload(models.Itinerary.notes),
+            selectinload(models.Itinerary.collaborators).selectinload(
+                models.ItineraryCollaborator.user
+            ),
+            selectinload(models.Itinerary.comments).selectinload(
+                models.ItineraryComment.author
+            ),
+            selectinload(models.Itinerary.versions),
+            selectinload(models.Itinerary.portal_tokens),
         )
     )
     return session.scalars(statement).unique().first()
@@ -870,6 +952,23 @@ def update_itinerary(
 
     session.add(itinerary)
     session.flush()
+
+    _apply_pricing_strategy(itinerary)
+
+    record_itinerary_version(
+        session,
+        itinerary,
+        schemas.ItineraryVersionCreate(
+            summary=f"Updated on {datetime.utcnow():%Y-%m-%d %H:%M UTC}",
+            snapshot={
+                "status": itinerary.status,
+                "estimate_amount": str(itinerary.estimate_amount)
+                if itinerary.estimate_amount
+                else None,
+                "total_price": str(itinerary.total_price) if itinerary.total_price else None,
+            },
+        ),
+    )
 
     client = itinerary.client
     _notify_contact(
@@ -963,6 +1062,207 @@ def duplicate_itinerary(session: Session, itinerary: models.Itinerary) -> models
         metadata={"original_itinerary_id": itinerary.id, "clone_itinerary_id": clone.id},
     )
     return clone
+
+
+def add_itinerary_collaborator(
+    session: Session,
+    itinerary: models.Itinerary,
+    collaborator_in: schemas.ItineraryCollaboratorCreate,
+) -> models.ItineraryCollaborator:
+    user = session.get(models.User, collaborator_in.user_id)
+    if not user:
+        raise ValueError("Unknown user provided for collaboration")
+    existing = session.scalar(
+        select(models.ItineraryCollaborator)
+        .where(models.ItineraryCollaborator.itinerary_id == itinerary.id)
+        .where(models.ItineraryCollaborator.user_id == collaborator_in.user_id)
+    )
+    if existing:
+        return existing
+    collaborator = models.ItineraryCollaborator(
+        itinerary=itinerary,
+        user=user,
+        role=collaborator_in.role,
+        permissions=collaborator_in.permissions,
+    )
+    session.add(collaborator)
+    session.flush()
+    return collaborator
+
+
+def list_itinerary_collaborators(
+    session: Session, itinerary: models.Itinerary
+) -> Sequence[models.ItineraryCollaborator]:
+    statement = (
+        select(models.ItineraryCollaborator)
+        .where(models.ItineraryCollaborator.itinerary_id == itinerary.id)
+        .options(selectinload(models.ItineraryCollaborator.user))
+        .order_by(models.ItineraryCollaborator.created_at)
+    )
+    return session.scalars(statement).all()
+
+
+def create_itinerary_comment(
+    session: Session,
+    itinerary: models.Itinerary,
+    comment_in: schemas.ItineraryCommentCreate,
+) -> models.ItineraryComment:
+    if comment_in.author_id and not session.get(models.User, comment_in.author_id):
+        raise ValueError("Unknown comment author")
+    comment = models.ItineraryComment(
+        itinerary=itinerary,
+        author_id=comment_in.author_id,
+        body=comment_in.body,
+    )
+    session.add(comment)
+    session.flush()
+    return comment
+
+
+def set_comment_resolution(
+    session: Session, comment: models.ItineraryComment, resolved: bool
+) -> models.ItineraryComment:
+    comment.resolved = resolved
+    session.add(comment)
+    session.flush()
+    return comment
+
+
+def record_itinerary_version(
+    session: Session,
+    itinerary: models.Itinerary,
+    version_in: schemas.ItineraryVersionCreate,
+) -> models.ItineraryVersion:
+    latest_number = session.scalar(
+        select(models.ItineraryVersion.version_number)
+        .where(models.ItineraryVersion.itinerary_id == itinerary.id)
+        .order_by(desc(models.ItineraryVersion.version_number))
+    )
+    version = models.ItineraryVersion(
+        itinerary=itinerary,
+        version_number=(latest_number or 0) + 1,
+        summary=version_in.summary,
+        snapshot=version_in.snapshot or {},
+    )
+    session.add(version)
+    session.flush()
+    return version
+
+
+def list_itinerary_versions(
+    session: Session, itinerary: models.Itinerary
+) -> Sequence[models.ItineraryVersion]:
+    statement = (
+        select(models.ItineraryVersion)
+        .where(models.ItineraryVersion.itinerary_id == itinerary.id)
+        .order_by(desc(models.ItineraryVersion.version_number))
+    )
+    return session.scalars(statement).all()
+
+
+def build_itinerary_suggestions(
+    itinerary: models.Itinerary, focus: Optional[str] = None
+) -> list[schemas.ItinerarySuggestion]:
+    suggestions = utils.generate_itinerary_suggestions(itinerary, focus=focus)
+    return [schemas.ItinerarySuggestion(**suggestion) for suggestion in suggestions]
+
+
+def create_portal_invitation(
+    session: Session, payload: schemas.PortalInvitationRequest
+) -> models.PortalAccessToken:
+    itinerary = get_itinerary(session, payload.itinerary_id)
+    if not itinerary:
+        raise ValueError("Itinerary not found")
+    client = session.get(models.Client, payload.client_id)
+    if not client:
+        raise ValueError("Client not found")
+    if itinerary.client_id != client.id:
+        raise ValueError("Client must match itinerary client")
+    token = secrets.token_urlsafe(24)
+    portal_token = models.PortalAccessToken(
+        itinerary=itinerary,
+        client=client,
+        token=token,
+        expires_at=datetime.utcnow() + timedelta(days=payload.expires_in_days),
+        status="pending",
+    )
+    session.add(portal_token)
+    session.flush()
+    return portal_token
+
+
+def get_portal_token(session: Session, token: str) -> models.PortalAccessToken | None:
+    statement = (
+        select(models.PortalAccessToken)
+        .where(models.PortalAccessToken.token == token)
+        .options(
+            selectinload(models.PortalAccessToken.itinerary)
+            .selectinload(models.Itinerary.items)
+            .selectinload(models.ItineraryItem.media_links)
+            .selectinload(models.ItineraryItemMedia.asset),
+            selectinload(models.PortalAccessToken.itinerary)
+            .selectinload(models.Itinerary.notes),
+            selectinload(models.PortalAccessToken.itinerary)
+            .selectinload(models.Itinerary.extensions),
+            selectinload(models.PortalAccessToken.itinerary).selectinload(
+                models.Itinerary.client
+            ),
+        )
+    )
+    return session.scalars(statement).first()
+
+
+def record_portal_view(
+    session: Session, portal_token: models.PortalAccessToken
+) -> models.PortalAccessToken:
+    portal_token.last_viewed_at = datetime.utcnow()
+    session.add(portal_token)
+    session.flush()
+    return portal_token
+
+
+def apply_portal_decision(
+    session: Session,
+    portal_token: models.PortalAccessToken,
+    decision: schemas.PortalDecisionRequest,
+) -> models.PortalAccessToken:
+    portal_token.status = decision.decision
+    portal_token.approved_at = datetime.utcnow() if decision.decision == "approved" else None
+    portal_token.approval_notes = decision.notes
+    session.add(portal_token)
+    session.flush()
+    return portal_token
+
+
+def update_portal_waiver(
+    session: Session, portal_token: models.PortalAccessToken, waiver: schemas.PortalWaiverRequest
+) -> models.PortalAccessToken:
+    portal_token.waiver_signed = waiver.accepted
+    session.add(portal_token)
+    session.flush()
+    return portal_token
+
+
+def get_portal_view(portal_token: models.PortalAccessToken) -> schemas.PortalView:
+    itinerary = portal_token.itinerary
+    pricing = get_pricing_summary(itinerary)
+    agency = itinerary.client.agency if itinerary.client else None
+    branding = {
+        "agency_name": agency.name if agency else None,
+        "logo": itinerary.brand_logo_url or getattr(agency, "logo_url", None),
+        "primary_color": itinerary.brand_primary_color
+        or getattr(agency, "brand_primary_color", None),
+        "powered_by": (agency.powered_by_label if agency else None)
+        or DEFAULT_POWERED_BY_LABEL,
+    }
+    available_documents = ["travel_brief", "visa_letter", "waiver"]
+    return schemas.PortalView(
+        itinerary=itinerary,
+        pricing=pricing,
+        available_documents=available_documents,
+        payment_methods=list(utils.SUPPORTED_PAYMENT_PROVIDERS.keys()),
+        branding=branding,
+    )
 
 
 # Finance helpers
@@ -1560,3 +1860,38 @@ def notification_summary(session: Session) -> schemas.NotificationSummary:
     for notification in notifications:
         by_channel[notification.channel] = by_channel.get(notification.channel, 0) + 1
     return schemas.NotificationSummary(total_sent=len(notifications), by_channel=by_channel)
+
+
+def get_analytics_overview(session: Session) -> schemas.AnalyticsOverview:
+    total_clients = session.scalar(select(func.count(models.Client.id))) or 0
+    total_itineraries = session.scalar(select(func.count(models.Itinerary.id))) or 0
+    total_revenue = session.scalar(select(func.sum(models.Payment.amount))) or Decimal("0")
+    upcoming_departures = (
+        session.scalar(
+            select(func.count(models.Itinerary.id)).where(
+                models.Itinerary.start_date >= date.today()
+            )
+        )
+        or 0
+    )
+    average_margin = session.scalar(select(func.avg(models.Itinerary.calculated_margin)))
+    revenue_rows = session.execute(
+        select(
+            func.strftime("%Y-%m", models.Payment.paid_on),
+            func.sum(models.Payment.amount),
+        )
+        .group_by(func.strftime("%Y-%m", models.Payment.paid_on))
+        .order_by(func.strftime("%Y-%m", models.Payment.paid_on))
+    ).all()
+    trend = [
+        schemas.AnalyticsDataPoint(label=row[0], value=row[1] or Decimal("0"))
+        for row in revenue_rows
+    ]
+    return schemas.AnalyticsOverview(
+        total_clients=int(total_clients),
+        total_itineraries=int(total_itineraries),
+        total_revenue=Decimal(total_revenue or 0),
+        upcoming_departures=int(upcoming_departures),
+        average_margin=Decimal(average_margin) if average_margin is not None else None,
+        revenue_trend=trend,
+    )

@@ -10,6 +10,7 @@ from .routes import (
     itineraries,
     leads,
     media,
+    portal,
     reports,
     suppliers,
     tour_packages,
@@ -26,6 +27,7 @@ router.include_router(flights.router)
 router.include_router(reports.router)
 router.include_router(suppliers.router)
 router.include_router(media.router)
+router.include_router(portal.router)
 router.include_router(admin.router)
 
 __all__ = ["router"]

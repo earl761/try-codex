@@ -243,6 +243,13 @@ class ItineraryBase(BaseModel):
     brand_footer_note: Optional[str] = Field(
         None, description="Footer notes or disclaimers for printable itineraries"
     )
+    markup_strategy: Literal["flat", "percentage"] = Field(
+        "flat", description="Pricing approach used when calculating the selling price"
+    )
+    target_margin: Optional[Decimal] = Field(
+        None,
+        description="Flat amount or percentage target depending on the chosen strategy",
+    )
 
 
 class ItineraryExtensionBase(BaseModel):
@@ -302,6 +309,8 @@ class ItineraryUpdate(BaseModel):
     brand_primary_color: Optional[str] = None
     brand_secondary_color: Optional[str] = None
     brand_footer_note: Optional[str] = None
+    markup_strategy: Optional[Literal["flat", "percentage"]] = None
+    target_margin: Optional[Decimal] = None
     extensions: Optional[List[ItineraryExtensionCreate]] = None
     notes: Optional[List[ItineraryNoteCreate]] = None
 
@@ -311,6 +320,114 @@ class Itinerary(ItineraryBase, TimestampMixin):
     items: List[ItineraryItem]
     extensions: List[ItineraryExtension] = Field(default_factory=list)
     notes: List[ItineraryNote] = Field(default_factory=list)
+    calculated_margin: Optional[Decimal] = None
+    collaborators: List[ItineraryCollaborator] = Field(default_factory=list)
+    comments: List[ItineraryComment] = Field(default_factory=list)
+    versions: List[ItineraryVersion] = Field(default_factory=list)
+
+
+class ItineraryCollaboratorBase(BaseModel):
+    user_id: int
+    role: Literal["viewer", "editor", "approver"] = "editor"
+    permissions: List[str] = Field(default_factory=list)
+
+
+class ItineraryCollaboratorCreate(ItineraryCollaboratorBase):
+    pass
+
+
+class ItineraryCollaborator(ItineraryCollaboratorBase, TimestampMixin):
+    id: int
+    user: Optional["User"] = None
+
+
+class ItineraryCommentCreate(BaseModel):
+    author_id: Optional[int] = None
+    body: str
+
+
+class ItineraryComment(ItineraryCommentCreate, TimestampMixin):
+    id: int
+    resolved: bool = False
+    author: Optional["User"] = None
+
+
+class CommentResolutionRequest(BaseModel):
+    resolved: bool = True
+
+
+class ItineraryVersionCreate(BaseModel):
+    summary: Optional[str] = None
+    snapshot: Optional[dict[str, Any]] = None
+
+
+class ItineraryVersion(ItineraryVersionCreate, TimestampMixin):
+    id: int
+    version_number: int
+
+
+class PortalInvitationRequest(BaseModel):
+    itinerary_id: int
+    client_id: int
+    expires_in_days: int = Field(7, ge=1, le=90)
+
+
+class PortalAccessToken(TimestampMixin):
+    id: int
+    itinerary_id: int
+    client_id: int
+    token: str
+    status: str
+    expires_at: datetime
+    last_viewed_at: Optional[datetime] = None
+    approved_at: Optional[datetime] = None
+    waiver_signed: bool = False
+    approval_notes: Optional[str] = None
+
+
+class PortalDecisionRequest(BaseModel):
+    decision: Literal["approved", "declined"]
+    notes: Optional[str] = None
+
+
+class PortalWaiverRequest(BaseModel):
+    accepted: bool
+
+
+class ItinerarySuggestion(BaseModel):
+    title: str
+    description: str
+    confidence: float = Field(..., ge=0, le=1)
+
+
+class PricingSummary(BaseModel):
+    base_cost: Decimal
+    markup_value: Decimal
+    total_price: Decimal
+    margin_percent: float
+
+
+class PortalView(BaseModel):
+    itinerary: Itinerary
+    pricing: PricingSummary
+    available_documents: List[str]
+    payment_methods: List[str]
+    branding: Dict[str, Any]
+
+
+class AnalyticsDataPoint(BaseModel):
+    label: str
+    value: Decimal
+
+
+class AnalyticsOverview(BaseModel):
+    total_clients: int
+    total_itineraries: int
+    total_revenue: Decimal
+    upcoming_departures: int
+    average_margin: Optional[Decimal] = None
+    revenue_trend: List[AnalyticsDataPoint]
+    calculated_margin: Optional[Decimal] = None
 
 
 class InvoiceBase(BaseModel):

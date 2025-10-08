@@ -18,6 +18,12 @@ A FastAPI-based backend for travel and tour agencies to manage clients, build pr
 - **Notifications**: Automatic email and WhatsApp notification logs for client, itinerary, finance, supplier, and integration events.
 - **Admin Console**: Manage travel agencies, integration API keys, site settings, and review notification history.
 - **SEO Landing Page**: A marketing-focused landing page powered by Jinja2 with customizable meta tags managed through admin settings.
+- **Collaborative Itinerary Studio**: Invite teammates as viewers, editors, or approvers, capture threaded comments, and maintain automatic version history with pricing snapshots.
+- **AI-Assisted Enhancements**: Request contextual activity, margin, or traveler-support suggestions to strengthen each proposal before sending.
+- **Dynamic Pricing Controls**: Configure flat or percentage markups, monitor calculated margins, and generate profitability summaries for every itinerary.
+- **Document Automation**: Instantly render travel briefs, visa support letters, and traveler waivers aligned to agency branding.
+- **Client Portal**: Share a mobile-first portal for traveler approvals, waiver signatures, and payment method discovery via secure invitations.
+- **Analytics Overview**: Surface booking KPIs, revenue trends, and average margins through the admin analytics endpoint.
 
 ## Getting Started
 
@@ -62,6 +68,7 @@ app/
 │       ├── itineraries.py
 │       ├── leads.py
 │       ├── media.py
+│       ├── portal.py
 │       ├── reports.py
 │       ├── suppliers.py
 │       └── tour_packages.py
@@ -71,12 +78,16 @@ app/
 ├── models.py        # SQLAlchemy ORM models
 ├── schemas.py       # Pydantic models for validation
 ├── templates/       # Jinja2 templates for itineraries, tickets, and landing page
+│   ├── client_portal.html
 │   ├── flight_ticket.html
 │   ├── itinerary.html        # compatibility include for the classic layout
 │   ├── itinerary_classic.html
 │   ├── itinerary_modern.html
 │   ├── itinerary_gallery.html
-│   └── landing.html
+│   ├── landing.html
+│   ├── travel_brief.html
+│   ├── traveler_waiver.html
+│   └── visa_letter.html
 ├── utils.py         # Helper utilities
 requirements.txt
 README.md
@@ -99,6 +110,11 @@ pytest
 - `POST /itineraries` – create a branded itinerary with images, estimate amounts, and email/WhatsApp notifications.
 - `GET /itineraries/{id}/print` – render a printable itinerary document (layouts: `classic`, `modern`, `gallery`).
 - `POST /itineraries/{id}/invoice` – convert an itinerary estimate into a finance invoice in one call.
+- `GET /itineraries/{id}/pricing` – review base costs, markup values, and calculated margins for an itinerary.
+- `GET /itineraries/{id}/suggestions` – request AI-assisted enhancements across pricing, activities, or traveler support.
+- `GET /itineraries/{id}/documents/{type}` – download travel briefs, visa support letters, or waiver templates.
+- `POST /itineraries/{id}/collaborators` – grant edit/comment access to teammates.
+- `POST /itineraries/{id}/comments` – capture collaboration feedback and mark threads as resolved.
 - `POST /finance/invoices` – issue an invoice linked to a client or itinerary.
 - `POST /leads/{id}/convert` – create a client record from a qualified lead.
 - `POST /itineraries/{id}/duplicate` – clone an itinerary as a reusable template.
@@ -116,6 +132,9 @@ pytest
 - `GET /admin/media` – review, update, or delete media assets across the platform.
 - `POST /admin/packages` – create subscription packages for travel agencies and highlight them on the landing page.
 - `POST /admin/subscriptions` – enroll a travel agency into a subscription package and trigger notifications.
+- `POST /portal/invitations` – invite travelers into the client portal to approve itineraries and sign waivers.
+- `GET /portal/invitations/{token}` – fetch portal context (documents, pricing, payment options) or render the traveler page.
+- `GET /admin/analytics/overview` – retrieve headline KPIs plus monthly revenue trends for the business.
 - `GET /suppliers/integrations/{provider}/{resource}` – preview data structures for external APIs (Amadeus hotels/flights, etc.).
 - `POST /admin/agencies` – manage travel agencies from the admin console.
 - `POST /admin/api-keys` – store provider API keys (e.g., Amadeus) scoped to an agency.

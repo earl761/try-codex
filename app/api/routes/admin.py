@@ -209,6 +209,11 @@ def notifications_summary(db: Session = Depends(get_db)) -> schemas.Notification
     return crud.notification_summary(db)
 
 
+@router.get("/analytics/overview", response_model=schemas.AnalyticsOverview)
+def analytics_overview(db: Session = Depends(get_db)) -> schemas.AnalyticsOverview:
+    return crud.get_analytics_overview(db)
+
+
 @router.get("/settings", response_model=list[schemas.SiteSetting])
 def list_settings(db: Session = Depends(get_db)) -> list[schemas.SiteSetting]:
     settings = crud.list_site_settings(db)

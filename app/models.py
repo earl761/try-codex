@@ -175,6 +175,18 @@ class Itinerary(Base, TimestampMixin):
     brand_primary_color = Column(String(20), nullable=True)
     brand_secondary_color = Column(String(20), nullable=True)
     brand_footer_note = Column(Text, nullable=True)
+    markup_strategy = Column(
+        String(50),
+        nullable=False,
+        default="flat",
+        doc="Pricing approach such as flat or percentage",
+    )
+    target_margin = Column(
+        Numeric(10, 2),
+        nullable=True,
+        doc="Represents either a flat amount or percentage depending on the strategy",
+    )
+    calculated_margin = Column(Numeric(10, 2), nullable=True)
 
     client = relationship("Client", back_populates="itineraries")
     tour_package = relationship("TourPackage", back_populates="itineraries")
@@ -188,6 +200,26 @@ class Itinerary(Base, TimestampMixin):
     )
     flight_bookings = relationship(
         "FlightBooking", back_populates="itinerary", cascade="all, delete-orphan"
+    )
+    collaborators = relationship(
+        "ItineraryCollaborator",
+        back_populates="itinerary",
+        cascade="all, delete-orphan",
+    )
+    comments = relationship(
+        "ItineraryComment",
+        back_populates="itinerary",
+        cascade="all, delete-orphan",
+    )
+    versions = relationship(
+        "ItineraryVersion",
+        back_populates="itinerary",
+        cascade="all, delete-orphan",
+    )
+    portal_tokens = relationship(
+        "PortalAccessToken",
+        back_populates="itinerary",
+        cascade="all, delete-orphan",
     )
 
     __table_args__ = (
@@ -356,6 +388,16 @@ class User(Base, TimestampMixin):
     agency = relationship("TravelAgency", back_populates="users")
     notifications = relationship("NotificationLog", back_populates="user")
     media_uploads = relationship("MediaAsset", back_populates="uploaded_by")
+    collaborations = relationship(
+        "ItineraryCollaborator",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+    itinerary_comments = relationship(
+        "ItineraryComment",
+        back_populates="author",
+        cascade="all, delete-orphan",
+    )
 
 
 class IntegrationCredential(Base, TimestampMixin):
@@ -539,3 +581,84 @@ class ItineraryNote(Base, TimestampMixin):
     content = Column(Text, nullable=False)
 
     itinerary = relationship("Itinerary", back_populates="notes")
+
+
+class ItineraryCollaborator(Base, TimestampMixin):
+    __tablename__ = "itinerary_collaborators"
+
+    __table_args__ = (
+        UniqueConstraint("itinerary_id", "user_id", name="uq_itinerary_collaborator"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    itinerary_id = Column(
+        Integer, ForeignKey("itineraries.id", ondelete="CASCADE"), nullable=False
+    )
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    role = Column(String(50), nullable=False, default="editor")
+    permissions = Column(
+        JSON,
+        nullable=False,
+        default=list,
+        doc="Fine-grained permissions granted to the collaborator",
+    )
+
+    itinerary = relationship("Itinerary", back_populates="collaborators")
+    user = relationship("User", back_populates="collaborations")
+
+
+class ItineraryComment(Base, TimestampMixin):
+    __tablename__ = "itinerary_comments"
+
+    id = Column(Integer, primary_key=True, index=True)
+    itinerary_id = Column(
+        Integer, ForeignKey("itineraries.id", ondelete="CASCADE"), nullable=False
+    )
+    author_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    body = Column(Text, nullable=False)
+    resolved = Column(Boolean, nullable=False, default=False)
+
+    itinerary = relationship("Itinerary", back_populates="comments")
+    author = relationship("User", back_populates="itinerary_comments")
+
+
+class ItineraryVersion(Base, TimestampMixin):
+    __tablename__ = "itinerary_versions"
+
+    __table_args__ = (
+        UniqueConstraint("itinerary_id", "version_number", name="uq_itinerary_version"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    itinerary_id = Column(
+        Integer, ForeignKey("itineraries.id", ondelete="CASCADE"), nullable=False
+    )
+    version_number = Column(Integer, nullable=False)
+    summary = Column(String(255), nullable=True)
+    snapshot = Column(JSON, nullable=True)
+
+    itinerary = relationship("Itinerary", back_populates="versions")
+
+
+class PortalAccessToken(Base, TimestampMixin):
+    __tablename__ = "portal_access_tokens"
+
+    __table_args__ = (
+        UniqueConstraint("token", name="uq_portal_token"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    itinerary_id = Column(
+        Integer, ForeignKey("itineraries.id", ondelete="CASCADE"), nullable=False
+    )
+    client_id = Column(Integer, ForeignKey("clients.id", ondelete="CASCADE"), nullable=False)
+    token = Column(String(64), nullable=False, unique=True)
+    expires_at = Column(DateTime, nullable=False)
+    status = Column(String(50), nullable=False, default="pending")
+    last_viewed_at = Column(DateTime, nullable=True)
+    approved_at = Column(DateTime, nullable=True)
+    approval_notes = Column(Text, nullable=True)
+    waiver_signed = Column(Boolean, nullable=False, default=False)
+
+    itinerary = relationship("Itinerary", back_populates="portal_tokens")
+    client = relationship("Client")
