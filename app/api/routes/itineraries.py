@@ -1,0 +1,86 @@
+"""Itinerary management endpoints."""
+from __future__ import annotations
+
+from typing import List
+
+from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi.responses import HTMLResponse
+from sqlalchemy.orm import Session
+
+from ... import crud, models, schemas
+from ...utils import render_itinerary
+from ..deps import get_db
+
+router = APIRouter(prefix="/itineraries", tags=["itineraries"])
+
+
+@router.post("", response_model=schemas.Itinerary, status_code=status.HTTP_201_CREATED)
+def create_itinerary(
+    itinerary_in: schemas.ItineraryCreate, db: Session = Depends(get_db)
+) -> models.Itinerary:
+    itinerary = crud.create_itinerary(db, itinerary_in)
+    db.refresh(itinerary)
+    return itinerary
+
+
+@router.get("", response_model=List[schemas.Itinerary])
+def list_itineraries(db: Session = Depends(get_db)) -> List[models.Itinerary]:
+    return list(crud.list_itineraries(db))
+
+
+@router.get("/{itinerary_id}", response_model=schemas.Itinerary)
+def get_itinerary(itinerary_id: int, db: Session = Depends(get_db)) -> models.Itinerary:
+    itinerary = crud.get_itinerary(db, itinerary_id)
+    if not itinerary:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Itinerary not found")
+    return itinerary
+
+
+@router.put("/{itinerary_id}", response_model=schemas.Itinerary)
+def update_itinerary(
+    itinerary_id: int,
+    itinerary_in: schemas.ItineraryUpdate,
+    db: Session = Depends(get_db),
+) -> models.Itinerary:
+    itinerary = crud.get_itinerary(db, itinerary_id)
+    if not itinerary:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Itinerary not found")
+    itinerary = crud.update_itinerary(db, itinerary, itinerary_in)
+    db.refresh(itinerary)
+    return itinerary
+
+
+@router.post(
+    "/{itinerary_id}/duplicate",
+    response_model=schemas.Itinerary,
+    status_code=status.HTTP_201_CREATED,
+    summary="Clone an existing itinerary to use as a template",
+)
+def duplicate_itinerary(itinerary_id: int, db: Session = Depends(get_db)) -> models.Itinerary:
+    itinerary = crud.get_itinerary(db, itinerary_id)
+    if not itinerary:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Itinerary not found")
+    clone = crud.duplicate_itinerary(db, itinerary)
+    db.refresh(clone)
+    return clone
+
+
+@router.get(
+    "/{itinerary_id}/print",
+    response_class=HTMLResponse,
+    summary="Render a printable itinerary document",
+)
+def print_itinerary(itinerary_id: int, db: Session = Depends(get_db)) -> str:
+    itinerary = crud.get_itinerary(db, itinerary_id)
+    if not itinerary:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Itinerary not found")
+    return render_itinerary(itinerary)
+
+
+@router.delete("/{itinerary_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_itinerary(itinerary_id: int, db: Session = Depends(get_db)) -> Response:
+    itinerary = crud.get_itinerary(db, itinerary_id)
+    if not itinerary:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Itinerary not found")
+    crud.delete_itinerary(db, itinerary)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
