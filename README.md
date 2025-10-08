@@ -142,6 +142,10 @@ pytest
 - `GET /admin/notifications` – audit recent email/WhatsApp notifications and delivery metadata.
 - `PUT /admin/settings/{key}` – override landing page headlines, SEO descriptions, and keywords.
 
+## SaaS Readiness Roadmap
+
+Looking to commercialize the platform? Review the [SaaS Readiness Roadmap](docs/saas_roadmap.md) for a curated backlog covering operational foundations (multi-tenant isolation, billing, audit trails), revenue-driving add-ons (marketplace upsells, dynamic packaging, automation), growth levers (referrals, public APIs, in-app guidance), and enterprise capabilities (SLAs, SSO, data residency).
+
 Refer to the auto-generated docs for the full list of endpoints and payload schemas.
 
 ## Notifications & Two-Factor Workflow
