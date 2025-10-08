@@ -16,6 +16,9 @@ from .routes import (
 
 router = APIRouter()
 router.include_router(auth.router)
+from .routes import clients, finance, itineraries, leads, reports, tour_packages
+
+router = APIRouter()
 router.include_router(clients.router)
 router.include_router(leads.router)
 router.include_router(tour_packages.router)

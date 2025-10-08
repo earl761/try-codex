@@ -41,6 +41,9 @@ def reset_database() -> None:
     Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
     reset_media_storage()
+def reset_database() -> None:
+    Base.metadata.drop_all(bind=engine)
+    Base.metadata.create_all(bind=engine)
 
 
 reset_database()
@@ -92,6 +95,8 @@ def upload_sample_media_asset(client: TestClient) -> int:
 def test_create_itinerary_and_print(api_client: TestClient) -> None:
     client_id = create_sample_client(api_client)
     asset_id = upload_sample_media_asset(api_client)
+def test_create_itinerary_and_print(api_client: TestClient) -> None:
+    client_id = create_sample_client(api_client)
     itinerary_payload = {
         "client_id": client_id,
         "title": "Bali Adventure",
@@ -174,6 +179,22 @@ def test_create_itinerary_and_print(api_client: TestClient) -> None:
     gallery_html = gallery.text
     assert "Gallery Layout" in gallery_html
     assert "Traveler Notes" in gallery_html
+    printable = api_client.get(f"/itineraries/{itinerary_id}/print")
+    assert printable.status_code == 200
+    html = printable.text
+    assert "Bali Adventure" in html
+    assert "Day 1" in html
+    assert "Optional Extensions" in html
+    assert "Traveler Guidance" in html
+    assert "Client Estimate" in html
+    assert "Thank you for choosing Explorer Collective." in html
+
+    printable = api_client.get(f"/itineraries/{itinerary_id}/print")
+    assert printable.status_code == 200
+    body = printable.text
+    assert "Bali Adventure" in body
+    assert "Day 1" in body
+    assert "Nusa Dua" in body
 
 
 def test_finance_summary_flow(api_client: TestClient) -> None:
@@ -214,6 +235,14 @@ def test_finance_summary_flow(api_client: TestClient) -> None:
         json={"status": "completed"},
     )
     assert complete_response.status_code == 200
+    payment_payload = {
+        "invoice_id": invoice_id,
+        "amount": "500.00",
+        "paid_on": str(date(2024, 6, 2)),
+        "currency": "USD",
+    }
+    payment_response = api_client.post("/finance/payments", json=payment_payload)
+    assert payment_response.status_code == 201
 
     expense_payload = {
         "description": "Hotel deposit",
@@ -282,6 +311,12 @@ def test_subscription_packages_visible_on_landing(api_client: TestClient) -> Non
     landing_html = landing_page.text
     assert "Growth" in landing_html
     assert "Unlimited itinerary exports" in landing_html
+    data = summary.json()
+    assert data["total_invoiced"] == 1500.0
+    assert data["total_paid"] == 500.0
+    assert data["total_expenses"] == 300.0
+    assert data["outstanding"] == 1000.0
+    assert data["profitability"] == 200.0
 
 
 def test_generate_invoice_from_itinerary(api_client: TestClient) -> None:

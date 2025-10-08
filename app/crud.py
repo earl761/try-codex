@@ -500,6 +500,13 @@ def deactivate_two_factor(session: Session, user: models.User) -> models.User:
     session.add(user)
     session.flush()
     return user
+from collections.abc import Sequence
+from decimal import Decimal
+
+from sqlalchemy import select
+from sqlalchemy.orm import Session, selectinload
+
+from . import models, schemas
 
 
 # Client helpers
@@ -710,6 +717,16 @@ def create_itinerary(session: Session, itinerary_in: schemas.ItineraryCreate) ->
         phone=client.phone if client else None,
         metadata={"itinerary_id": itinerary.id},
     )
+def create_itinerary(session: Session, itinerary_in: schemas.ItineraryCreate) -> models.Itinerary:
+    items_data = itinerary_in.model_dump().pop("items", [])
+    itinerary = models.Itinerary(**itinerary_in.model_dump(exclude={"items"}))
+    session.add(itinerary)
+    session.flush()
+
+    for item in items_data:
+        itinerary_item = models.ItineraryItem(itinerary_id=itinerary.id, **item)
+        session.add(itinerary_item)
+    session.flush()
     return itinerary
 
 
@@ -724,6 +741,9 @@ def list_itineraries(session: Session) -> Sequence[models.Itinerary]:
             selectinload(models.Itinerary.tour_package),
             selectinload(models.Itinerary.extensions),
             selectinload(models.Itinerary.notes),
+            selectinload(models.Itinerary.items),
+            selectinload(models.Itinerary.client),
+            selectinload(models.Itinerary.tour_package),
         )
         .order_by(models.Itinerary.start_date)
     )
@@ -742,6 +762,9 @@ def get_itinerary(session: Session, itinerary_id: int) -> models.Itinerary | Non
             selectinload(models.Itinerary.tour_package),
             selectinload(models.Itinerary.extensions),
             selectinload(models.Itinerary.notes),
+            selectinload(models.Itinerary.items),
+            selectinload(models.Itinerary.client),
+            selectinload(models.Itinerary.tour_package),
         )
     )
     return session.scalars(statement).unique().first()
@@ -806,6 +829,11 @@ def update_itinerary(
         phone=client.phone if client else None,
         metadata={"itinerary_id": itinerary.id},
     )
+        for item in items_data:
+            itinerary.items.append(models.ItineraryItem(**item))
+
+    session.add(itinerary)
+    session.flush()
     return itinerary
 
 
@@ -887,6 +915,18 @@ def duplicate_itinerary(session: Session, itinerary: models.Itinerary) -> models
         phone=client.phone if client else None,
         metadata={"original_itinerary_id": itinerary.id, "clone_itinerary_id": clone.id},
     )
+        session.add(
+            models.ItineraryItem(
+                itinerary_id=clone.id,
+                day_number=item.day_number,
+                title=item.title,
+                description=item.description,
+                location=item.location,
+                start_time=item.start_time,
+                end_time=item.end_time,
+            )
+        )
+    session.flush()
     return clone
 
 
