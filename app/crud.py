@@ -5,6 +5,7 @@ import json
 import re
 import secrets
 from collections.abc import Sequence
+from datetime import date
 from decimal import Decimal
 from typing import Any, Dict, Optional
 
@@ -34,6 +35,17 @@ def _ensure_unique_slug(session: Session, slug: str) -> str:
     return slug
 
 
+def _ensure_package_slug(session: Session, slug: str) -> str:
+    base = slug
+    counter = 1
+    while session.scalar(
+        select(models.SubscriptionPackage).where(models.SubscriptionPackage.slug == slug)
+    ):
+        slug = f"{base}-{counter}"
+        counter += 1
+    return slug
+
+
 def _prepare_tags(tags: Optional[list[str] | str]) -> str | None:
     if tags is None:
         return None
@@ -42,6 +54,10 @@ def _prepare_tags(tags: Optional[list[str] | str]) -> str | None:
     else:
         values = [str(tag).strip() for tag in tags if str(tag).strip()]
     return ",".join(values) if values else None
+
+
+def _prepare_features(features: Optional[list[str] | str]) -> str | None:
+    return _prepare_tags(features)
 
 
 def _media_assets_by_ids(
@@ -168,6 +184,141 @@ def update_travel_agency(
     session.add(agency)
     session.flush()
     return agency
+
+
+# Subscription package helpers
+
+
+def create_subscription_package(
+    session: Session, payload: schemas.SubscriptionPackageCreate
+) -> models.SubscriptionPackage:
+    data = payload.model_dump()
+    slug = data.pop("slug", None) or _slugify(data["name"])
+    data["slug"] = _ensure_package_slug(session, slug)
+    data["features"] = _prepare_features(data.get("features"))
+    package = models.SubscriptionPackage(**data)
+    session.add(package)
+    session.flush()
+    return package
+
+
+def list_subscription_packages(
+    session: Session, *, only_active: bool = False
+) -> Sequence[models.SubscriptionPackage]:
+    statement = select(models.SubscriptionPackage).order_by(models.SubscriptionPackage.price)
+    if only_active:
+        statement = statement.where(models.SubscriptionPackage.is_active.is_(True))
+    return session.scalars(statement).unique().all()
+
+
+def get_subscription_package(
+    session: Session, package_id: int
+) -> models.SubscriptionPackage | None:
+    return session.get(models.SubscriptionPackage, package_id)
+
+
+def update_subscription_package(
+    session: Session,
+    package: models.SubscriptionPackage,
+    payload: schemas.SubscriptionPackageUpdate,
+) -> models.SubscriptionPackage:
+    data = payload.model_dump(exclude_unset=True)
+    features = data.pop("features", None)
+    if "name" in data and not data.get("slug"):
+        data.setdefault("slug", _slugify(data["name"]))
+    if "slug" in data:
+        data["slug"] = _ensure_package_slug(session, data["slug"])
+    if features is not None:
+        package.features = _prepare_features(features)
+    for field, value in data.items():
+        setattr(package, field, value)
+    session.add(package)
+    session.flush()
+    return package
+
+
+def list_agency_subscriptions(
+    session: Session, *, agency_id: int | None = None
+) -> Sequence[models.AgencySubscription]:
+    statement = select(models.AgencySubscription).options(
+        selectinload(models.AgencySubscription.package),
+        selectinload(models.AgencySubscription.agency),
+    )
+    if agency_id is not None:
+        statement = statement.where(models.AgencySubscription.agency_id == agency_id)
+    statement = statement.order_by(models.AgencySubscription.created_at.desc())
+    return session.scalars(statement).unique().all()
+
+
+def get_agency_subscription(
+    session: Session, subscription_id: int
+) -> models.AgencySubscription | None:
+    statement = (
+        select(models.AgencySubscription)
+        .options(
+            selectinload(models.AgencySubscription.package),
+            selectinload(models.AgencySubscription.agency),
+        )
+        .where(models.AgencySubscription.id == subscription_id)
+    )
+    return session.scalars(statement).unique().first()
+
+
+def create_agency_subscription(
+    session: Session, payload: schemas.AgencySubscriptionCreate
+) -> models.AgencySubscription:
+    data = payload.model_dump()
+    if not data.get("start_date"):
+        data["start_date"] = date.today()
+    subscription = models.AgencySubscription(**data)
+    session.add(subscription)
+    session.flush()
+    agency = session.get(models.TravelAgency, subscription.agency_id)
+    package = session.get(models.SubscriptionPackage, subscription.package_id)
+    if agency and package:
+        _notify_contact(
+            session,
+            "subscription.created",
+            subject="Subscription activated",
+            message=f"{agency.name} subscribed to {package.name}.",
+            email=agency.contact_email,
+            phone=agency.contact_phone,
+            metadata={
+                "agency_id": subscription.agency_id,
+                "package_id": subscription.package_id,
+                "subscription_id": subscription.id,
+            },
+        )
+    return subscription
+
+
+def update_agency_subscription(
+    session: Session,
+    subscription: models.AgencySubscription,
+    payload: schemas.AgencySubscriptionUpdate,
+) -> models.AgencySubscription:
+    data = payload.model_dump(exclude_unset=True)
+    for field, value in data.items():
+        setattr(subscription, field, value)
+    session.add(subscription)
+    session.flush()
+    agency = session.get(models.TravelAgency, subscription.agency_id)
+    package = session.get(models.SubscriptionPackage, subscription.package_id)
+    if agency and package:
+        _notify_contact(
+            session,
+            "subscription.updated",
+            subject="Subscription updated",
+            message=f"Subscription for {agency.name} now {subscription.status}.",
+            email=agency.contact_email,
+            phone=agency.contact_phone,
+            metadata={
+                "agency_id": subscription.agency_id,
+                "package_id": subscription.package_id,
+                "subscription_id": subscription.id,
+            },
+        )
+    return subscription
 
 
 # Media helpers
@@ -913,6 +1064,39 @@ def update_payment(session: Session, payment: models.Payment, payment_in: schema
 
 def delete_payment(session: Session, payment: models.Payment) -> None:
     session.delete(payment)
+    session.flush()
+
+
+def create_payment_gateway(
+    session: Session, payload: schemas.PaymentGatewayCreate
+) -> models.PaymentGateway:
+    gateway = models.PaymentGateway(**payload.model_dump())
+    session.add(gateway)
+    session.flush()
+    return gateway
+
+
+def list_payment_gateways(session: Session) -> Sequence[models.PaymentGateway]:
+    statement = select(models.PaymentGateway).order_by(models.PaymentGateway.created_at.desc())
+    return session.scalars(statement).all()
+
+
+def get_payment_gateway(session: Session, gateway_id: int) -> models.PaymentGateway | None:
+    return session.get(models.PaymentGateway, gateway_id)
+
+
+def update_payment_gateway(
+    session: Session, gateway: models.PaymentGateway, payload: schemas.PaymentGatewayUpdate
+) -> models.PaymentGateway:
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        setattr(gateway, field, value)
+    session.add(gateway)
+    session.flush()
+    return gateway
+
+
+def delete_payment_gateway(session: Session, gateway: models.PaymentGateway) -> None:
+    session.delete(gateway)
     session.flush()
 
 

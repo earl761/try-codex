@@ -5,6 +5,14 @@ A FastAPI-based backend for travel and tour agencies to manage clients, build pr
 ## Features
 
 - **Itinerary Builder**: Create multi-day itineraries with detailed day plans, branded estimates, day-level imagery, and generate printable HTML output.
+- **Designer Layouts**: Offer three PDF-friendly itinerary layouts (classic timeline, modern dark mode, and photo gallery) with agency branding automatically applied.
+- **CRM Tools**: Manage clients and leads, capture notes and statuses, and convert warm leads into clients in one click.
+- **Supplier Marketplace**: Capture partner lodges, hotels, transport providers, and their rate cards for itinerary planning.
+- **Inventory Management**: Store reusable tour packages and supplier-specific pricing.
+- **Finance Module**: Issue invoices, record payments and expenses, initiate gateway transactions, and view profitability summaries and sales reports with monthly rollups.
+- **Payment Integrations**: Built-in connectors for MTN MoMo, Airtel Money, Stripe, and PayPal with admin-manageable gateway credentials.
+- **Media Library & Optimization**: Upload images for itineraries, automatically optimize them for web delivery, and manage the gallery from the admin console.
+- **Subscription Packages**: Configure travel-agency subscription plans that surface on the SEO landing page and drive signups.
 - **CRM Tools**: Manage clients and leads, capture notes and statuses, and convert warm leads into clients in one click.
 - **Supplier Marketplace**: Capture partner lodges, hotels, transport providers, and their rate cards for itinerary planning.
 - **Inventory Management**: Store reusable tour packages and supplier-specific pricing.
@@ -76,6 +84,11 @@ app/
 ├── models.py        # SQLAlchemy ORM models
 ├── schemas.py       # Pydantic models for validation
 ├── templates/       # Jinja2 templates for printable itineraries and landing page
+-│   ├── itinerary.html        # compatibility include for the classic layout
+-│   ├── itinerary_classic.html
+-│   ├── itinerary_modern.html
+-│   └── itinerary_gallery.html
+│   └── landing.html
 │   ├── itinerary.html
 │   └── landing.html
 ├── templates/       # Jinja2 templates for printable itineraries
@@ -100,16 +113,25 @@ pytest
 - `POST /auth/2fa/setup` & `/auth/2fa/activate` – generate and enable TOTP-based two-factor authentication for a user.
 - `POST /clients` – create a client record with automatic notification logging.
 - `POST /itineraries` – create a branded itinerary with images, estimate amounts, and email/WhatsApp notifications.
+- `GET /itineraries/{id}/print` – render a printable itinerary document (layouts: `classic`, `modern`, `gallery`).
 - `GET /itineraries/{id}/print` – render a printable itinerary document.
 - `POST /itineraries/{id}/invoice` – convert an itinerary estimate into a finance invoice in one call.
 - `POST /finance/invoices` – issue an invoice linked to a client or itinerary.
 - `POST /leads/{id}/convert` – create a client record from a qualified lead.
 - `POST /itineraries/{id}/duplicate` – clone an itinerary as a reusable template.
 - `GET /finance/summary` – view totals for invoices, payments, expenses, and profitability.
+- `GET /finance/payment-providers` – inspect supported payment providers and their capabilities.
+- `POST /finance/payments/initiate` – kick off a payment against an invoice using MTN MoMo, Airtel Money, Stripe, or PayPal.
 - `POST /suppliers` – onboard supplier partners with contact information and integration metadata.
 - `POST /suppliers/{id}/rates` – manage supplier rate cards that feed into itinerary pricing.
 - `POST /media/assets` – upload an image, store the original, and produce an optimized rendition for itineraries.
 - `GET /admin/media` – review, update, or delete media assets across the platform.
+- `POST /admin/packages` – create subscription packages for travel agencies and highlight them on the landing page.
+- `POST /admin/subscriptions` – enroll a travel agency into a subscription package and trigger notifications.
+- `GET /suppliers/integrations/{provider}/{resource}` – preview data structures for external APIs (Amadeus hotels/flights, etc.).
+- `POST /admin/agencies` – manage travel agencies from the admin console.
+- `POST /admin/api-keys` – store provider API keys (e.g., Amadeus) scoped to an agency.
+- `POST /admin/payment-gateways` – configure payment gateway credentials per agency and toggle availability.
 - `GET /suppliers/integrations/{provider}/{resource}` – preview data structures for external APIs (Amadeus hotels/flights, etc.).
 - `POST /admin/agencies` – manage travel agencies from the admin console.
 - `POST /admin/api-keys` – store provider API keys (e.g., Amadeus) scoped to an agency.

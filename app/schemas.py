@@ -7,6 +7,8 @@ from decimal import Decimal
 from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, ValidationInfo, field_validator
+
+from .utils import SUPPORTED_PAYMENT_PROVIDERS
 from typing import List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -350,12 +352,37 @@ class Invoice(InvoiceBase, TimestampMixin):
     id: int
 
 
+PAYMENT_PROVIDER_IDS: tuple[str, ...] = tuple(SUPPORTED_PAYMENT_PROVIDERS.keys()) + ("manual",)
+
+
 class PaymentBase(BaseModel):
     invoice_id: int
     amount: Decimal
     currency: str = "USD"
     paid_on: date
     method: Optional[str] = None
+    provider: str = Field("manual", description="Payment provider identifier")
+    status: str = Field("completed", description="Processing status e.g. pending, completed")
+    transaction_reference: Optional[str] = Field(
+        None, description="Provider transaction or collection reference"
+    )
+    fee_amount: Optional[Decimal] = Field(
+        None, description="Processing fee charged by the provider"
+    )
+    provider_metadata: Optional[Dict[str, Any]] = Field(
+        default=None, description="Optional provider-specific metadata payload"
+    )
+    notes: Optional[str] = None
+
+    @field_validator("provider")
+    @classmethod
+    def validate_provider(cls, value: str) -> str:
+        if value not in PAYMENT_PROVIDER_IDS:
+            raise ValueError(
+                f"Unsupported provider '{value}'. Supported providers: {', '.join(PAYMENT_PROVIDER_IDS)}"
+            )
+        return value
+
     notes: Optional[str] = None
 
 
@@ -369,11 +396,67 @@ class PaymentUpdate(BaseModel):
     currency: Optional[str] = None
     paid_on: Optional[date] = None
     method: Optional[str] = None
+    provider: Optional[str] = None
+    status: Optional[str] = None
+    transaction_reference: Optional[str] = None
+    fee_amount: Optional[Decimal] = None
+    provider_metadata: Optional[Dict[str, Any]] = None
     notes: Optional[str] = None
 
 
 class Payment(PaymentBase, TimestampMixin):
     id: int
+
+
+class PaymentGatewayBase(BaseModel):
+    provider: str
+    label: Optional[str] = None
+    credentials: Optional[str] = None
+    active: bool = True
+    agency_id: Optional[int] = None
+
+
+class PaymentGatewayCreate(PaymentGatewayBase):
+    pass
+
+
+class PaymentGatewayUpdate(BaseModel):
+    provider: Optional[str] = None
+    label: Optional[str] = None
+    credentials: Optional[str] = None
+    active: Optional[bool] = None
+    agency_id: Optional[int] = None
+
+
+class PaymentGateway(PaymentGatewayBase, TimestampMixin):
+    id: int
+
+
+class PaymentProviderInfo(BaseModel):
+    id: str
+    display_name: str
+    payment_type: Literal["mobile_money", "card", "digital_wallet"]
+    supported_currencies: List[str]
+    settlement_timeframe: str
+    requires_checkout_url: bool
+    transaction_fee_percent: float
+
+
+class PaymentInitiationRequest(BaseModel):
+    invoice_id: int
+    amount: Decimal
+    currency: str
+    provider: str
+    customer_reference: Optional[str] = None
+
+
+class PaymentInitiationResponse(BaseModel):
+    provider: str
+    status: str
+    transaction_reference: str
+    checkout_url: Optional[str] = None
+    message: str
+    payment_id: int
 
 
 class ExpenseBase(BaseModel):
@@ -499,6 +582,99 @@ class SupplierIntegration(BaseModel):
     resources: List[str]
 
 
+class SubscriptionPackageBase(BaseModel):
+    name: str
+    description: Optional[str] = None
+    price: Decimal = Field(..., description="Package price for agencies")
+    currency: str = Field("USD", description="Currency code for pricing")
+    billing_cycle: str = Field(
+        "monthly",
+        description="Billing cadence such as monthly, quarterly, or yearly",
+    )
+    features: List[str] = Field(
+        default_factory=list,
+        description="Key selling points rendered on the landing page",
+    )
+    is_active: bool = True
+
+    model_config = ConfigDict(from_attributes=True)
+
+    @field_validator("features", mode="before")
+    @classmethod
+    def normalize_features(cls, value: Any) -> List[str]:
+        if value is None:
+            return []
+        if isinstance(value, str):
+            return [feature.strip() for feature in value.split(",") if feature.strip()]
+        if isinstance(value, list):
+            return [str(feature).strip() for feature in value if str(feature).strip()]
+        return []
+
+
+class SubscriptionPackageCreate(SubscriptionPackageBase):
+    slug: Optional[str] = Field(
+        None, description="Optional custom slug for marketing and analytics"
+    )
+
+
+class SubscriptionPackageUpdate(BaseModel):
+    name: Optional[str] = None
+    slug: Optional[str] = None
+    description: Optional[str] = None
+    price: Optional[Decimal] = None
+    currency: Optional[str] = None
+    billing_cycle: Optional[str] = None
+    features: Optional[List[str]] = None
+    is_active: Optional[bool] = None
+
+    @field_validator("features", mode="before")
+    @classmethod
+    def normalize_features(cls, value: Any) -> Optional[List[str]]:
+        if value is None:
+            return None
+        if isinstance(value, str):
+            return [feature.strip() for feature in value.split(",") if feature.strip()]
+        if isinstance(value, list):
+            return [str(feature).strip() for feature in value if str(feature).strip()]
+        return None
+
+
+class SubscriptionPackage(SubscriptionPackageBase, TimestampMixin):
+    id: int
+    slug: str
+
+
+class AgencySubscriptionBase(BaseModel):
+    status: str = Field("active", description="Subscription status e.g. trial, active, cancelled")
+    start_date: Optional[date] = Field(None, description="Subscription start date")
+    end_date: Optional[date] = Field(None, description="Subscription end date if cancelled")
+    auto_renew: bool = True
+    notes: Optional[str] = Field(None, description="Internal notes about the subscription")
+
+
+class AgencySubscriptionCreate(AgencySubscriptionBase):
+    agency_id: int
+    package_id: int
+
+
+class AgencySubscriptionUpdate(BaseModel):
+    package_id: Optional[int] = None
+    status: Optional[str] = None
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
+    auto_renew: Optional[bool] = None
+    notes: Optional[str] = None
+
+
+class AgencySubscription(AgencySubscriptionBase, TimestampMixin):
+    id: int
+    agency_id: int
+    package_id: int
+    package: Optional[SubscriptionPackage] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class TravelAgencyBase(BaseModel):
     name: str
     slug: Optional[str] = Field(None, description="SEO friendly slug")
@@ -543,6 +719,7 @@ class TravelAgencyUpdate(BaseModel):
 
 class TravelAgency(TravelAgencyBase, TimestampMixin):
     id: int
+    subscriptions: List[AgencySubscription] = Field(default_factory=list)
 
 
 class UserBase(BaseModel):

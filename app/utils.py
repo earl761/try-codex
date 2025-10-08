@@ -1,6 +1,11 @@
 """Utility helpers for itinerary formatting and media management."""
 from __future__ import annotations
 
+from decimal import Decimal
+from io import BytesIO
+from pathlib import Path
+from random import randint
+from typing import Dict, Iterable, List, Optional
 from io import BytesIO
 from pathlib import Path
 from random import randint
@@ -22,11 +27,68 @@ AVAILABLE_SUPPLIER_INTEGRATIONS: dict[str, List[str]] = {
     "local_inventories": ["lodges", "transport"],
 }
 
+SUPPORTED_PAYMENT_PROVIDERS: Dict[str, Dict[str, object]] = {
+    "mtn_momo": {
+        "display_name": "MTN MoMo",
+        "payment_type": "mobile_money",
+        "supported_currencies": ["UGX", "GHS", "RWF", "XAF", "XOF", "ZMW"],
+        "transaction_fee_percent": 1.5,
+        "settlement_timeframe": "Instant to same-day",
+        "requires_checkout_url": False,
+    },
+    "airtel_money": {
+        "display_name": "Airtel Money",
+        "payment_type": "mobile_money",
+        "supported_currencies": ["UGX", "KES", "TZS", "XAF", "XOF"],
+        "transaction_fee_percent": 1.8,
+        "settlement_timeframe": "Instant",
+        "requires_checkout_url": False,
+    },
+    "stripe": {
+        "display_name": "Stripe",
+        "payment_type": "card",
+        "supported_currencies": ["USD", "EUR", "GBP", "KES", "ZAR"],
+        "transaction_fee_percent": 2.9,
+        "settlement_timeframe": "2-7 days",
+        "requires_checkout_url": True,
+    },
+    "paypal": {
+        "display_name": "PayPal",
+        "payment_type": "digital_wallet",
+        "supported_currencies": ["USD", "EUR", "GBP", "AUD", "CAD"],
+        "transaction_fee_percent": 3.1,
+        "settlement_timeframe": "Same-day to 2 days",
+        "requires_checkout_url": True,
+    },
+}
+
+ITINERARY_LAYOUT_TEMPLATES: Dict[str, str] = {
+    "classic": "itinerary_classic.html",
+    "modern": "itinerary_modern.html",
+    "gallery": "itinerary_gallery.html",
+}
+
+_ENV = Environment(
+    loader=PackageLoader("app", "templates"),
+    autoescape=select_autoescape(["html", "xml"]),
+    enable_async=False,
+)
+
 
 def _ensure_media_directories() -> None:
     for directory in (ORIGINAL_MEDIA_DIR, OPTIMIZED_MEDIA_DIR):
         directory.mkdir(parents=True, exist_ok=True)
 
+
+def render_itinerary(itinerary: models.Itinerary, layout: str = "classic") -> str:
+    """Render an itinerary into a printable HTML document with the desired layout."""
+
+    normalized_layout = layout.lower()
+    template_name = ITINERARY_LAYOUT_TEMPLATES.get(
+        normalized_layout, ITINERARY_LAYOUT_TEMPLATES["classic"]
+    )
+    template = _ENV.get_template(template_name)
+    return template.render(itinerary=itinerary, selected_layout=normalized_layout)
 """Utility helpers for itinerary formatting."""
 from __future__ import annotations
 
@@ -86,6 +148,11 @@ def optimize_image_upload(data: bytes, filename: str) -> dict[str, int | str]:
 
 
 def compute_outstanding_balance(payments: Iterable[models.Payment], amount_due: float) -> float:
+    total_paid = sum(
+        float(payment.amount)
+        for payment in payments
+        if getattr(payment, "status", "completed") == "completed"
+    )
     total_paid = sum(float(payment.amount) for payment in payments)
     return round(amount_due - total_paid, 2)
 
@@ -160,6 +227,60 @@ def fetch_supplier_inventory(
         ]
 
     return sample_data
+
+
+def list_supported_payment_providers() -> List[Dict[str, object]]:
+    """Return structured metadata about supported payment providers."""
+
+    providers: List[Dict[str, object]] = []
+    for identifier, meta in SUPPORTED_PAYMENT_PROVIDERS.items():
+        providers.append({"id": identifier, **meta})
+    return providers
+
+
+def initiate_payment_with_provider(
+    provider: str,
+    amount: Decimal,
+    currency: str,
+    customer_reference: Optional[str] = None,
+) -> Dict[str, object]:
+    """Simulate initiating a payment with the configured provider."""
+
+    provider_key = provider.lower()
+    if provider_key not in SUPPORTED_PAYMENT_PROVIDERS:
+        raise ValueError(f"Provider '{provider}' is not supported")
+
+    metadata = SUPPORTED_PAYMENT_PROVIDERS[provider_key]
+    supported_currencies = metadata["supported_currencies"]
+    if currency.upper() not in supported_currencies:
+        raise ValueError(
+            f"Currency '{currency}' is not supported by {metadata['display_name']}"
+        )
+
+    reference = f"{provider_key.upper()}-{uuid4().hex[:10].upper()}"
+    checkout_url = None
+    status = "pending" if metadata["payment_type"] == "mobile_money" else "completed"
+    method = metadata["payment_type"]
+    if metadata["requires_checkout_url"]:
+        checkout_url = f"https://checkout.example/{provider_key}/{reference.lower()}"
+        status = "requires_action"
+
+    fee_amount = (
+        (amount * Decimal(str(metadata["transaction_fee_percent"]))) / Decimal("100")
+    ).quantize(Decimal("0.01"))
+
+    return {
+        "provider": provider_key,
+        "transaction_reference": reference,
+        "status": status,
+        "method": method,
+        "checkout_url": checkout_url,
+        "fee_amount": fee_amount,
+        "metadata": {
+            "customer_reference": customer_reference,
+            "settlement_timeframe": metadata["settlement_timeframe"],
+        },
+    }
 
 
 def remove_media_files(asset: models.MediaAsset) -> None:

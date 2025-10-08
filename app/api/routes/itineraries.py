@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from typing import List
 
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
@@ -97,6 +98,15 @@ def invoice_itinerary(
     response_class=HTMLResponse,
     summary="Render a printable itinerary document",
 )
+def print_itinerary(
+    itinerary_id: int,
+    layout: str = Query("classic", description="Layout key such as classic, modern, gallery"),
+    db: Session = Depends(get_db),
+) -> str:
+    itinerary = crud.get_itinerary(db, itinerary_id)
+    if not itinerary:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Itinerary not found")
+    return render_itinerary(itinerary, layout=layout)
 def print_itinerary(itinerary_id: int, db: Session = Depends(get_db)) -> str:
     itinerary = crud.get_itinerary(db, itinerary_id)
     if not itinerary:

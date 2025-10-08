@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>{{ itinerary.title }} - Signature Journey</title>
+    {% set primary = itinerary.brand_primary_color or '#0b3d59' %}
+    {% set secondary = itinerary.brand_secondary_color or '#2d8abf' %}
+    <style>
+        @page { margin: 30px; }
+        body {
+            font-family: 'Libre Franklin', Arial, sans-serif;
+            margin: 0;
+            color: #1d1d1f;
+            background: #f8fafc;
+        }
+        .wrapper {
+            max-width: 960px;
+            margin: 0 auto;
+            padding: 40px 48px 60px;
+            background: #ffffff;
+            box-shadow: 0 20px 45px rgba(0, 0, 0, 0.08);
+            border-radius: 24px;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 6px solid {{ primary }};
+            padding-bottom: 24px;
+            margin-bottom: 32px;
+            gap: 32px;
+        }
+        .brand-logo {
+            max-width: 180px;
+            max-height: 120px;
+            object-fit: contain;
+        }
+        .title-block h1 {
+            font-size: 2.5em;
+            margin: 0;
+            color: {{ primary }};
+        }
+        .title-block p {
+            margin: 6px 0;
+            color: #555;
+        }
+        .pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: {{ secondary }}10;
+            color: {{ secondary }};
+            border-radius: 999px;
+            padding: 6px 16px;
+            font-size: 0.85em;
+            letter-spacing: 0.04em;
+        }
+        .summary-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 16px;
+            margin-bottom: 36px;
+        }
+        .summary-card {
+            background: linear-gradient(135deg, {{ primary }}0f, #ffffff);
+            border: 1px solid {{ primary }}22;
+            padding: 16px 18px;
+            border-radius: 16px;
+        }
+        .summary-card h4 { margin: 0 0 6px; font-size: 0.95em; color: {{ primary }}; }
+        .summary-card p { margin: 0; font-weight: 600; }
+        .timeline {
+            position: relative;
+            padding-left: 24px;
+            margin-left: 8px;
+            border-left: 3px solid {{ secondary }}55;
+        }
+        .day {
+            position: relative;
+            margin-bottom: 28px;
+            padding-left: 26px;
+        }
+        .day::before {
+            content: attr(data-day);
+            position: absolute;
+            left: -60px;
+            top: 0;
+            width: 44px;
+            height: 44px;
+            background: {{ secondary }};
+            color: #fff;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            box-shadow: 0 10px 20px {{ secondary }}40;
+        }
+        .day h3 {
+            margin: 0 0 8px;
+            color: {{ primary }};
+            font-size: 1.35em;
+        }
+        .meta {
+            color: #6b7280;
+            font-size: 0.9em;
+            margin-bottom: 8px;
+        }
+        .badge {
+            display: inline-block;
+            padding: 4px 10px;
+            background: {{ secondary }}15;
+            color: {{ secondary }};
+            border-radius: 12px;
+            text-transform: uppercase;
+            font-size: 0.7em;
+            letter-spacing: 0.06em;
+        }
+        .details {
+            background: #f8fafc;
+            border: 1px solid #dbeafe;
+            border-left: 4px solid {{ secondary }};
+            border-radius: 12px;
+            padding: 12px 16px;
+            margin-top: 10px;
+            line-height: 1.6;
+        }
+        .media-gallery {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 14px;
+            margin-top: 14px;
+        }
+        .media-card {
+            border-radius: 14px;
+            overflow: hidden;
+            border: 1px solid {{ secondary }}22;
+            box-shadow: 0 12px 18px rgba(0, 0, 0, 0.08);
+        }
+        .media-card img { width: 100%; display: block; }
+        .media-card span {
+            display: block;
+            background: {{ secondary }};
+            color: white;
+            padding: 6px 10px;
+            font-size: 0.75em;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+        }
+        .section-title {
+            border-bottom: 2px solid {{ primary }}22;
+            padding-bottom: 8px;
+            margin-top: 40px;
+            color: {{ primary }};
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+        }
+        .extensions ul {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+            display: grid;
+            gap: 16px;
+        }
+        .extensions li {
+            border: 1px solid {{ primary }}22;
+            border-radius: 12px;
+            padding: 16px;
+            background: linear-gradient(120deg, {{ primary }}08, #ffffff);
+        }
+        .note-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 18px;
+        }
+        .note-card {
+            border-radius: 16px;
+            border: 1px solid {{ secondary }}22;
+            padding: 18px;
+            background: #ffffff;
+            box-shadow: 0 14px 24px rgba(15, 23, 42, 0.08);
+        }
+        footer {
+            margin-top: 48px;
+            border-top: 4px solid {{ primary }};
+            padding-top: 16px;
+            font-size: 0.9em;
+            color: #4b5563;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="wrapper">
+        <header class="header">
+            <div class="title-block">
+                <h1>{{ itinerary.title }}</h1>
+                <p>{{ itinerary.start_date }} &mdash; {{ itinerary.end_date }}</p>
+                <p class="pill">Status: {{ itinerary.status|title }}</p>
+                <p class="meta">Client: {{ itinerary.client.name }}{% if itinerary.client.email %} &lt;{{ itinerary.client.email }}&gt;{% endif %}</p>
+                {% if itinerary.tour_package %}
+                <p class="meta">Package: {{ itinerary.tour_package.name }} ({{ itinerary.tour_package.destination }})</p>
+                {% endif %}
+            </div>
+            {% if itinerary.brand_logo_url %}
+            <img src="{{ itinerary.brand_logo_url }}" alt="{{ itinerary.title }} logo" class="brand-logo">
+            {% endif %}
+        </header>
+
+        <section class="summary-cards">
+            {% if itinerary.total_price %}
+            <div class="summary-card">
+                <h4>Total Price</h4>
+                <p>{{ '%.2f'|format(itinerary.total_price) }}</p>
+            </div>
+            {% endif %}
+            {% if itinerary.estimate_amount %}
+            <div class="summary-card">
+                <h4>Client Estimate</h4>
+                <p>{{ '%.2f'|format(itinerary.estimate_amount) }} {{ itinerary.estimate_currency }}</p>
+            </div>
+            {% endif %}
+            <div class="summary-card">
+                <h4>Travel Days</h4>
+                <p>{{ itinerary.items|length }}</p>
+            </div>
+            {% if itinerary.extensions %}
+            <div class="summary-card">
+                <h4>Optional Extensions</h4>
+                <p>{{ itinerary.extensions|length }} curated add-ons</p>
+            </div>
+            {% endif %}
+        </section>
+
+        <section>
+            <h2 class="section-title">Daily Flow</h2>
+            <div class="timeline">
+                {% for item in itinerary.items|sort(attribute='day_number') %}
+                <article class="day" data-day="Day {{ item.day_number }}">
+                    <h3>{{ item.title }} <span class="badge">{{ item.category|replace('_', ' ')|title }}</span></h3>
+                    <p class="meta">
+                        {% if item.location %}Location: {{ item.location }} &bull; {% endif %}
+                        {% if item.start_time or item.end_time %}{{ item.start_time or 'TBC' }} - {{ item.end_time or 'TBC' }}{% endif %}
+                        {% if item.supplier_reference %}&bull; Ref: {{ item.supplier_reference }}{% endif %}
+                    </p>
+                    {% if item.description %}
+                    <div class="details">{{ item.description }}</div>
+                    {% endif %}
+                    {% if item.estimated_cost %}
+                    <p class="meta">Estimated Cost: {{ '%.2f'|format(item.estimated_cost) }} {{ item.estimated_currency }}</p>
+                    {% endif %}
+                    {% if item.media %}
+                    <div class="media-gallery">
+                        {% for media_link in item.media %}
+                        <div class="media-card">
+                            <img src="{{ media_link.asset.optimized_path }}" alt="{{ media_link.asset.alt_text or item.title }}">
+                            <span>{{ media_link.usage|title }}</span>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                </article>
+                {% endfor %}
+            </div>
+        </section>
+
+        {% if itinerary.extensions %}
+        <section class="extensions">
+            <h2 class="section-title">Extensions & Enhancements</h2>
+            <ul>
+                {% for extension in itinerary.extensions %}
+                <li>
+                    <strong>{{ extension.title }}</strong>
+                    {% if extension.additional_cost %}
+                        &mdash; {{ '%.2f'|format(extension.additional_cost) }} {{ extension.currency }}
+                    {% endif %}
+                    {% if extension.description %}
+                    <div class="details">{{ extension.description }}</div>
+                    {% endif %}
+                </li>
+                {% endfor %}
+            </ul>
+        </section>
+        {% endif %}
+
+        {% if itinerary.notes %}
+        <section class="notes">
+            <h2 class="section-title">Travel Briefing</h2>
+            <div class="note-grid">
+                {% for note in itinerary.notes %}
+                <div class="note-card">
+                    <h4>{{ note.title or note.category|title }}</h4>
+                    <p>{{ note.content }}</p>
+                </div>
+                {% endfor %}
+            </div>
+        </section>
+        {% endif %}
+
+        {% if itinerary.brand_footer_note %}
+        <footer>
+            {{ itinerary.brand_footer_note }}
+        </footer>
+        {% endif %}
+    </div>
+</body>
+</html>

@@ -79,6 +79,78 @@
         margin-top: 0;
         color: var(--secondary);
       }
+      .pricing {
+        background: rgba(255, 255, 255, 0.9);
+        padding: 4rem 1rem 5rem;
+      }
+      .pricing h2 {
+        text-align: center;
+        font-size: clamp(2rem, 3vw, 2.5rem);
+        margin-bottom: 2.5rem;
+        color: var(--secondary);
+      }
+      .package-grid {
+        max-width: 1100px;
+        margin: 0 auto;
+        display: grid;
+        gap: 1.75rem;
+        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      }
+      .package-card {
+        background: linear-gradient(180deg, rgba(15, 108, 189, 0.08), rgba(12, 60, 120, 0.04));
+        border-radius: 24px;
+        padding: 2.5rem 2rem;
+        box-shadow: 0 20px 40px rgba(12, 60, 120, 0.12);
+        border: 1px solid rgba(12, 60, 120, 0.08);
+        display: flex;
+        flex-direction: column;
+        gap: 1.2rem;
+      }
+      .package-card h3 {
+        margin: 0;
+        font-size: 1.5rem;
+        color: var(--secondary);
+      }
+      .package-price {
+        font-size: 2rem;
+        font-weight: 700;
+        margin: 0;
+        color: var(--primary);
+      }
+      .package-price span {
+        font-size: 0.65em;
+        font-weight: 500;
+        color: #2c3e50;
+      }
+      .package-card ul {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+        display: grid;
+        gap: 0.6rem;
+      }
+      .package-card li::before {
+        content: "✔";
+        color: var(--accent);
+        margin-right: 0.5rem;
+      }
+      .package-cta {
+        margin-top: auto;
+        align-self: flex-start;
+        background: white;
+        color: var(--secondary);
+        padding: 0.6rem 1.5rem;
+        border-radius: 999px;
+        border: 1px solid rgba(12, 60, 120, 0.2);
+        text-decoration: none;
+        font-weight: 600;
+        transition: all 0.2s ease;
+      }
+      .package-cta:hover {
+        background: var(--secondary);
+        color: white;
+        box-shadow: 0 15px 30px rgba(12, 60, 120, 0.2);
+      }
       footer {
         text-align: center;
         padding: 2rem 1rem 3rem;
@@ -110,6 +182,33 @@
         <p>Role-based access, single sign-on readiness, and two-factor authentication keep your business safe.</p>
       </article>
     </section>
+    {% if packages %}
+    <section class="pricing" aria-labelledby="packages-heading">
+      <h2 id="packages-heading">Subscription plans built for travel agencies</h2>
+      <div class="package-grid">
+        {% for package in packages %}
+        <article class="package-card">
+          <div>
+            <h3>{{ package.name }}</h3>
+            <p class="package-price">
+              <span>{{ package.currency }}</span> {{ '%.2f'|format(package.price) }}
+              <span>/{{ package.billing_cycle }}</span>
+            </p>
+          </div>
+          <p class="package-description">{{ package.description }}</p>
+          {% if package.features %}
+          <ul>
+            {% for feature in package.features %}
+            <li>{{ feature }}</li>
+            {% endfor %}
+          </ul>
+          {% endif %}
+          <a href="#get-started" class="package-cta">{{ content.call_to_action }}</a>
+        </article>
+        {% endfor %}
+      </div>
+    </section>
+    {% endif %}
     <footer>
       &copy; {{ current_year }} Tour Planner. All rights reserved.
     </footer>

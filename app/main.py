@@ -38,6 +38,10 @@ def create_application() -> FastAPI:
     def landing_page(request: Request, db: Session = Depends(get_db)) -> HTMLResponse:
         settings: Dict[str, str] = {setting.key: setting.value for setting in crud.list_site_settings(db)}
         content = DEFAULT_LANDING.model_copy()
+        packages = [
+            schemas.SubscriptionPackage.model_validate(pkg)
+            for pkg in crud.list_subscription_packages(db, only_active=True)
+        ]
 
         for field in ("headline", "subheadline", "call_to_action", "seo_description", "hero_image_url"):
             if field in settings:
@@ -50,6 +54,14 @@ def create_application() -> FastAPI:
         return templates.TemplateResponse(
             request,
             "landing.html",
+            {
+                "content": content,
+                "packages": packages,
+                "current_year": datetime.utcnow().year,
+            },
+        )
+
+    @app.get("/health", tags=["health"], summary="Service healthcheck")
             {"content": content, "current_year": datetime.utcnow().year},
         )
 

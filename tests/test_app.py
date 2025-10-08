@@ -158,6 +158,27 @@ def test_create_itinerary_and_print(api_client: TestClient) -> None:
     assert body["extensions"][0]["title"] == "Ubud Cultural Extension"
     assert body["items"][0]["media"][0]["asset"]["alt_text"] == "Sunset vista"
 
+    classic = api_client.get(f"/itineraries/{itinerary_id}/print?layout=classic")
+    assert classic.status_code == 200
+    classic_html = classic.text
+    assert "Bali Adventure" in classic_html
+    assert "Day 1" in classic_html
+    assert "Extensions & Enhancements" in classic_html
+    assert "Travel Briefing" in classic_html
+    assert "Client Estimate" in classic_html
+    assert "Thank you for choosing Explorer Collective." in classic_html
+
+    modern = api_client.get(f"/itineraries/{itinerary_id}/print?layout=modern")
+    assert modern.status_code == 200
+    modern_html = modern.text
+    assert "Snapshot" in modern_html
+    assert "Know Before You Go" in modern_html
+
+    gallery = api_client.get(f"/itineraries/{itinerary_id}/print?layout=gallery")
+    assert gallery.status_code == 200
+    gallery_html = gallery.text
+    assert "Gallery Layout" in gallery_html
+    assert "Traveler Notes" in gallery_html
     printable = api_client.get(f"/itineraries/{itinerary_id}/print")
     assert printable.status_code == 200
     html = printable.text
@@ -190,6 +211,30 @@ def test_finance_summary_flow(api_client: TestClient) -> None:
     assert invoice_response.status_code == 201
     invoice_id = invoice_response.json()["id"]
 
+    providers_response = api_client.get("/finance/payment-providers")
+    assert providers_response.status_code == 200
+    providers = providers_response.json()
+    provider_ids = {provider["id"] for provider in providers}
+    assert {"stripe", "paypal", "mtn_momo", "airtel_money"}.issubset(provider_ids)
+
+    initiation_payload = {
+        "invoice_id": invoice_id,
+        "amount": "500.00",
+        "currency": "USD",
+        "provider": "stripe",
+        "customer_reference": "STR-INV-500",
+    }
+    initiation_response = api_client.post("/finance/payments/initiate", json=initiation_payload)
+    assert initiation_response.status_code == 201
+    initiation_body = initiation_response.json()
+    assert initiation_body["status"] in {"requires_action", "pending"}
+    assert initiation_body["checkout_url"]
+
+    complete_response = api_client.put(
+        f"/finance/payments/{initiation_body['payment_id']}",
+        json={"status": "completed"},
+    )
+    assert complete_response.status_code == 200
     payment_payload = {
         "invoice_id": invoice_id,
         "amount": "500.00",
@@ -210,6 +255,62 @@ def test_finance_summary_flow(api_client: TestClient) -> None:
 
     summary = api_client.get("/finance/summary")
     assert summary.status_code == 200
+
+
+def test_subscription_packages_visible_on_landing(api_client: TestClient) -> None:
+    package_payload = {
+        "name": "Growth",
+        "price": "199.00",
+        "currency": "USD",
+        "billing_cycle": "monthly",
+        "description": "Everything a scaling agency needs to deliver beautiful itineraries.",
+        "features": [
+            "Unlimited itinerary exports",
+            "Branded client portal",
+            "Priority supplier support",
+        ],
+    }
+    package_response = api_client.post("/admin/packages", json=package_payload)
+    assert package_response.status_code == 201
+    package_body = package_response.json()
+    assert package_body["slug"].startswith("growth")
+    assert len(package_body["features"]) == 3
+
+    agency_payload = {
+        "name": "Wander Collective",
+        "contact_email": "hello@wander.example",
+        "contact_phone": "+15555551212",
+        "website": "https://wander.example",
+    }
+    agency_response = api_client.post("/admin/agencies", json=agency_payload)
+    assert agency_response.status_code == 201
+    agency_id = agency_response.json()["id"]
+
+    subscription_payload = {
+        "agency_id": agency_id,
+        "package_id": package_body["id"],
+        "notes": "Kick-off trial",
+    }
+    subscription_response = api_client.post("/admin/subscriptions", json=subscription_payload)
+    assert subscription_response.status_code == 201
+    subscription_body = subscription_response.json()
+    assert subscription_body["package"]["name"] == "Growth"
+    assert subscription_body["status"] == "active"
+
+    packages_listing = api_client.get("/admin/packages")
+    assert packages_listing.status_code == 200
+    assert len(packages_listing.json()) == 1
+
+    subscriptions_listing = api_client.get("/admin/subscriptions", params={"agency_id": agency_id})
+    assert subscriptions_listing.status_code == 200
+    listing_body = subscriptions_listing.json()
+    assert listing_body[0]["package"]["slug"] == package_body["slug"]
+
+    landing_page = api_client.get("/")
+    assert landing_page.status_code == 200
+    landing_html = landing_page.text
+    assert "Growth" in landing_html
+    assert "Unlimited itinerary exports" in landing_html
     data = summary.json()
     assert data["total_invoiced"] == 1500.0
     assert data["total_paid"] == 500.0
