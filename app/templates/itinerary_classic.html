@@ -311,6 +311,11 @@
             {% endif %}
             <div class="powered-by">{{ branding.powered_by }}</div>
         </footer>
+        {% if itinerary.brand_footer_note %}
+        <footer>
+            {{ itinerary.brand_footer_note }}
+        </footer>
+        {% endif %}
     </div>
 </body>
 </html>

@@ -2,6 +2,9 @@
 from __future__ import annotations
 
 from datetime import date
+"""Finance endpoints covering invoices, payments, and expenses."""
+from __future__ import annotations
+
 from typing import Any, List
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
@@ -13,6 +16,7 @@ from ...utils import (
     initiate_payment_with_provider,
     list_supported_payment_providers,
 )
+from ...utils import compute_outstanding_balance
 from ..deps import get_db
 
 router = APIRouter(prefix="/finance", tags=["finance"])
@@ -231,6 +235,7 @@ def finance_summary(db: Session = Depends(get_db)) -> dict[str, Any]:
         for payment in payments
         if (payment.status or "completed").lower() == "completed"
     )
+    total_paid = sum(float(payment.amount) for payment in payments)
     total_expenses = sum(float(expense.amount) for expense in expenses)
 
     outstanding = sum(

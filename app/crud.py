@@ -24,6 +24,16 @@ from .constants import (
     DEFAULT_POWERED_BY_LABEL,
     LANDING_PAGE_TEXT_FIELDS,
 )
+from datetime import date
+from decimal import Decimal
+from typing import Any, Dict, Optional
+
+import pyotp
+from passlib.context import CryptContext
+from sqlalchemy import select
+from sqlalchemy.orm import Session, selectinload
+
+from . import models, schemas, utils
 
 pwd_context = CryptContext(schemes=["pbkdf2_sha256"], deprecated="auto")
 
@@ -487,6 +497,7 @@ def create_user(session: Session, user_in: schemas.UserCreate) -> models.User:
         is_admin=is_admin,
         is_super_admin=is_super_admin,
         role=role,
+        is_admin=user_in.is_admin,
     )
     session.add(user)
     session.flush()
@@ -535,6 +546,11 @@ def update_user(session: Session, user: models.User, user_in: schemas.UserUpdate
         user.is_admin = is_admin
     if is_super_admin is not None:
         user.is_super_admin = is_super_admin
+def update_user(session: Session, user: models.User, user_in: schemas.UserUpdate) -> models.User:
+    data = user_in.model_dump(exclude_unset=True)
+    password = data.pop("password", None)
+    for field, value in data.items():
+        setattr(user, field, value)
     if password:
         user.hashed_password = hash_password(password)
     session.add(user)
@@ -603,6 +619,13 @@ def deactivate_two_factor(session: Session, user: models.User) -> models.User:
     session.add(user)
     session.flush()
     return user
+from collections.abc import Sequence
+from decimal import Decimal
+
+from sqlalchemy import select
+from sqlalchemy.orm import Session, selectinload
+
+from . import models, schemas
 
 
 # Client helpers
@@ -880,6 +903,16 @@ def create_itinerary(session: Session, itinerary_in: schemas.ItineraryCreate) ->
         phone=client.phone if client else None,
         metadata={"itinerary_id": itinerary.id},
     )
+def create_itinerary(session: Session, itinerary_in: schemas.ItineraryCreate) -> models.Itinerary:
+    items_data = itinerary_in.model_dump().pop("items", [])
+    itinerary = models.Itinerary(**itinerary_in.model_dump(exclude={"items"}))
+    session.add(itinerary)
+    session.flush()
+
+    for item in items_data:
+        itinerary_item = models.ItineraryItem(itinerary_id=itinerary.id, **item)
+        session.add(itinerary_item)
+    session.flush()
     return itinerary
 
 
@@ -901,6 +934,9 @@ def list_itineraries(session: Session) -> Sequence[models.Itinerary]:
                 models.ItineraryComment.author
             ),
             selectinload(models.Itinerary.versions),
+            selectinload(models.Itinerary.items),
+            selectinload(models.Itinerary.client),
+            selectinload(models.Itinerary.tour_package),
         )
         .order_by(models.Itinerary.start_date)
     )
@@ -927,6 +963,9 @@ def get_itinerary(session: Session, itinerary_id: int) -> models.Itinerary | Non
             ),
             selectinload(models.Itinerary.versions),
             selectinload(models.Itinerary.portal_tokens),
+            selectinload(models.Itinerary.items),
+            selectinload(models.Itinerary.client),
+            selectinload(models.Itinerary.tour_package),
         )
     )
     return session.scalars(statement).unique().first()
@@ -1008,6 +1047,11 @@ def update_itinerary(
         phone=client.phone if client else None,
         metadata={"itinerary_id": itinerary.id},
     )
+        for item in items_data:
+            itinerary.items.append(models.ItineraryItem(**item))
+
+    session.add(itinerary)
+    session.flush()
     return itinerary
 
 
@@ -1291,6 +1335,19 @@ def get_portal_view(portal_token: models.PortalAccessToken) -> schemas.PortalVie
         payment_methods=list(utils.SUPPORTED_PAYMENT_PROVIDERS.keys()),
         branding=branding,
     )
+        session.add(
+            models.ItineraryItem(
+                itinerary_id=clone.id,
+                day_number=item.day_number,
+                title=item.title,
+                description=item.description,
+                location=item.location,
+                start_time=item.start_time,
+                end_time=item.end_time,
+            )
+        )
+    session.flush()
+    return clone
 
 
 # Finance helpers

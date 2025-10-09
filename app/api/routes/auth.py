@@ -54,6 +54,7 @@ def signup(payload: schemas.SignupRequest, db: Session = Depends(get_db)) -> sch
             is_admin=role in ADMIN_ROLES,
             is_super_admin=False,
             role=role,
+            is_admin=False,
         ),
     )
     return user
