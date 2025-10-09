@@ -1,0 +1,1290 @@
+"""Pydantic schemas powering the Tour Planner API."""
+from __future__ import annotations
+
+import json
+from datetime import date, datetime
+from decimal import Decimal
+from typing import Any, Dict, List, Literal, Optional
+
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    EmailStr,
+    Field,
+    ValidationInfo,
+    field_validator,
+    model_validator,
+)
+
+from .constants import ADMIN_ROLES, ASSIGNABLE_AGENCY_ROLES, USER_ROLES
+from .utils import SUPPORTED_PAYMENT_PROVIDERS
+
+
+def _validate_role(role: str, allowed_roles: tuple[str, ...]) -> str:
+    if role not in allowed_roles:
+        raise ValueError(
+            f"role must be one of {', '.join(allowed_roles)}"
+        )
+    return role
+
+
+class TimestampMixin(BaseModel):
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ClientBase(BaseModel):
+    name: str = Field(..., description="Client full name")
+    email: Optional[EmailStr] = Field(None, description="Primary email address")
+    phone: Optional[str] = None
+    address: Optional[str] = None
+    notes: Optional[str] = None
+    agency_id: Optional[int] = Field(None, description="Owning travel agency identifier")
+
+
+class ClientCreate(ClientBase):
+    pass
+
+
+class ClientUpdate(BaseModel):
+    name: Optional[str] = None
+    email: Optional[EmailStr] = None
+    phone: Optional[str] = None
+    address: Optional[str] = None
+    notes: Optional[str] = None
+    agency_id: Optional[int] = None
+
+
+class Client(ClientBase, TimestampMixin):
+    id: int
+
+
+class LeadBase(BaseModel):
+    name: str
+    email: Optional[EmailStr] = None
+    source: Optional[str] = None
+    status: str = Field("new", description="Lead status e.g. new, contacted, qualified")
+    notes: Optional[str] = None
+    client_id: Optional[int] = None
+    agency_id: Optional[int] = None
+
+
+class LeadCreate(LeadBase):
+    pass
+
+
+class LeadUpdate(BaseModel):
+    name: Optional[str] = None
+    email: Optional[EmailStr] = None
+    source: Optional[str] = None
+    status: Optional[str] = None
+    notes: Optional[str] = None
+    client_id: Optional[int] = None
+    agency_id: Optional[int] = None
+
+
+class Lead(LeadBase, TimestampMixin):
+    id: int
+
+
+class LeadConversionResult(BaseModel):
+    lead: Lead
+    client: Client
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class TourPackageBase(BaseModel):
+    name: str
+    destination: str
+    duration_days: int
+    base_price: Decimal
+    description: Optional[str] = None
+
+
+class TourPackageCreate(TourPackageBase):
+    pass
+
+
+class TourPackageUpdate(BaseModel):
+    name: Optional[str] = None
+    destination: Optional[str] = None
+    duration_days: Optional[int] = None
+    base_price: Optional[Decimal] = None
+    description: Optional[str] = None
+
+
+class TourPackage(TourPackageBase, TimestampMixin):
+    id: int
+
+
+class MediaAssetBase(BaseModel):
+    agency_id: Optional[int] = Field(
+        None, description="Owning travel agency identifier if applicable"
+    )
+    alt_text: Optional[str] = Field(None, description="Accessible description")
+    tags: List[str] = Field(default_factory=list, description="Searchable keywords")
+
+    model_config = ConfigDict(from_attributes=True)
+
+    @field_validator("tags", mode="before")
+    @classmethod
+    def normalize_tags(cls, value: Any) -> List[str]:
+        if value is None:
+            return []
+        if isinstance(value, str):
+            return [tag.strip() for tag in value.split(",") if tag.strip()]
+        if isinstance(value, list):
+            return [str(tag).strip() for tag in value if str(tag).strip()]
+        return []
+
+
+class MediaAsset(MediaAssetBase, TimestampMixin):
+    id: int
+    filename: str
+    content_type: str
+    original_path: str
+    optimized_path: str
+    width: Optional[int] = None
+    height: Optional[int] = None
+    file_size: Optional[int] = None
+    uploaded_by_id: Optional[int] = None
+
+
+class MediaAssetUpdate(BaseModel):
+    alt_text: Optional[str] = None
+    tags: Optional[List[str]] = None
+    agency_id: Optional[int] = None
+
+    @field_validator("tags", mode="before")
+    @classmethod
+    def normalize_tags(cls, value: Any) -> Optional[List[str]]:
+        if value is None:
+            return None
+        if isinstance(value, str):
+            return [tag.strip() for tag in value.split(",") if tag.strip()]
+        if isinstance(value, list):
+            return [str(tag).strip() for tag in value if str(tag).strip()]
+        return None
+
+
+class ItineraryItemMediaBase(BaseModel):
+    usage: Literal["gallery", "activity", "accommodation", "transport", "highlight"] = Field(
+        "gallery", description="Context for displaying the media asset"
+    )
+
+
+class ItineraryItemMediaCreate(ItineraryItemMediaBase):
+    asset_id: int
+
+
+class ItineraryItemMedia(ItineraryItemMediaBase, TimestampMixin):
+    id: int
+    asset: MediaAsset
+
+
+class ItineraryItemBase(BaseModel):
+    day_number: int
+    title: str
+    description: Optional[str] = None
+    location: Optional[str] = None
+    start_time: Optional[str] = None
+    end_time: Optional[str] = None
+    category: Literal["activity", "accommodation", "transport", "meal", "other"] = Field(
+        "activity", description="Type of experience"
+    )
+    supplier_reference: Optional[str] = Field(
+        None, description="Supplier or booking reference for traceability"
+    )
+    estimated_cost: Optional[Decimal] = Field(
+        None, description="Estimated contribution to the overall budget"
+    )
+    estimated_currency: str = Field("USD", description="Currency for the estimate")
+
+    @field_validator("day_number")
+    @classmethod
+    def validate_day_number(cls, value: int) -> int:
+        if value <= 0:
+            raise ValueError("day_number must be greater than zero")
+        return value
+
+
+class ItineraryItemCreate(ItineraryItemBase):
+    media: List[ItineraryItemMediaCreate] = Field(
+        default_factory=list, description="Images that illustrate the day"
+    )
+
+
+class ItineraryItem(ItineraryItemBase, TimestampMixin):
+    id: int
+    media: List[ItineraryItemMedia] = Field(
+        default_factory=list,
+        validation_alias="media_links",
+        serialization_alias="media",
+    )
+
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
+
+class ItineraryBase(BaseModel):
+    client_id: int
+    tour_package_id: Optional[int] = None
+    title: str
+    start_date: date
+    end_date: date
+    total_price: Optional[Decimal] = None
+    status: str = "draft"
+    estimate_amount: Optional[Decimal] = Field(
+        None, description="Quote value shared with the client"
+    )
+    estimate_currency: str = Field("USD", description="Currency used for the estimate")
+    brand_logo_url: Optional[str] = Field(
+        None, description="Logo path or URL for client-facing documents"
+    )
+    brand_primary_color: Optional[str] = Field(
+        None, description="Primary HEX/RGB color applied to itinerary outputs"
+    )
+    brand_secondary_color: Optional[str] = Field(
+        None, description="Secondary HEX/RGB color applied to itinerary outputs"
+    )
+    brand_footer_note: Optional[str] = Field(
+        None, description="Footer notes or disclaimers for printable itineraries"
+    )
+    markup_strategy: Literal["flat", "percentage"] = Field(
+        "flat", description="Pricing approach used when calculating the selling price"
+    )
+    target_margin: Optional[Decimal] = Field(
+        None,
+        description="Flat amount or percentage target depending on the chosen strategy",
+    )
+
+
+class ItineraryExtensionBase(BaseModel):
+    title: str
+    description: Optional[str] = None
+    additional_cost: Optional[Decimal] = None
+    currency: str = "USD"
+
+
+class ItineraryExtensionCreate(ItineraryExtensionBase):
+    pass
+
+
+class ItineraryExtension(ItineraryExtensionBase, TimestampMixin):
+    id: int
+
+
+class ItineraryNoteBase(BaseModel):
+    category: Literal["packing", "visa", "terms", "destination", "custom"] = Field(
+        "custom", description="Type of advisory content"
+    )
+    title: Optional[str] = Field(None, description="Optional note heading")
+    content: str = Field(..., description="Guidance displayed to travelers")
+
+
+class ItineraryNoteCreate(ItineraryNoteBase):
+    pass
+
+
+class ItineraryNote(ItineraryNoteBase, TimestampMixin):
+    id: int
+
+
+class ItineraryCreate(ItineraryBase):
+    items: List[ItineraryItemCreate] = Field(default_factory=list)
+    extensions: List[ItineraryExtensionCreate] = Field(
+        default_factory=list, description="Optional post-tour or add-on experiences"
+    )
+    notes: List[ItineraryNoteCreate] = Field(
+        default_factory=list,
+        description="Reference information such as packing lists, visa requirements, or terms",
+    )
+
+
+class ItineraryUpdate(BaseModel):
+    client_id: Optional[int] = None
+    tour_package_id: Optional[int] = None
+    title: Optional[str] = None
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
+    total_price: Optional[Decimal] = None
+    status: Optional[str] = None
+    items: Optional[List[ItineraryItemCreate]] = None
+    estimate_amount: Optional[Decimal] = None
+    estimate_currency: Optional[str] = None
+    brand_logo_url: Optional[str] = None
+    brand_primary_color: Optional[str] = None
+    brand_secondary_color: Optional[str] = None
+    brand_footer_note: Optional[str] = None
+    markup_strategy: Optional[Literal["flat", "percentage"]] = None
+    target_margin: Optional[Decimal] = None
+    extensions: Optional[List[ItineraryExtensionCreate]] = None
+    notes: Optional[List[ItineraryNoteCreate]] = None
+
+
+class Itinerary(ItineraryBase, TimestampMixin):
+    id: int
+    items: List[ItineraryItem]
+    extensions: List[ItineraryExtension] = Field(default_factory=list)
+    notes: List[ItineraryNote] = Field(default_factory=list)
+    calculated_margin: Optional[Decimal] = None
+    collaborators: List[ItineraryCollaborator] = Field(default_factory=list)
+    comments: List[ItineraryComment] = Field(default_factory=list)
+    versions: List[ItineraryVersion] = Field(default_factory=list)
+
+
+class ItineraryCollaboratorBase(BaseModel):
+    user_id: int
+    role: Literal["viewer", "editor", "approver"] = "editor"
+    permissions: List[str] = Field(default_factory=list)
+
+
+class ItineraryCollaboratorCreate(ItineraryCollaboratorBase):
+    pass
+
+
+class ItineraryCollaborator(ItineraryCollaboratorBase, TimestampMixin):
+    id: int
+    user: Optional["User"] = None
+
+
+class ItineraryCommentCreate(BaseModel):
+    author_id: Optional[int] = None
+    body: str
+
+
+class ItineraryComment(ItineraryCommentCreate, TimestampMixin):
+    id: int
+    resolved: bool = False
+    author: Optional["User"] = None
+
+
+class CommentResolutionRequest(BaseModel):
+    resolved: bool = True
+
+
+class ItineraryVersionCreate(BaseModel):
+    summary: Optional[str] = None
+    snapshot: Optional[dict[str, Any]] = None
+
+
+class ItineraryVersion(ItineraryVersionCreate, TimestampMixin):
+    id: int
+    version_number: int
+
+
+class PortalInvitationRequest(BaseModel):
+    itinerary_id: int
+    client_id: int
+    expires_in_days: int = Field(7, ge=1, le=90)
+
+
+class PortalAccessToken(TimestampMixin):
+    id: int
+    itinerary_id: int
+    client_id: int
+    token: str
+    status: str
+    expires_at: datetime
+    last_viewed_at: Optional[datetime] = None
+    approved_at: Optional[datetime] = None
+    waiver_signed: bool = False
+    approval_notes: Optional[str] = None
+
+
+class PortalDecisionRequest(BaseModel):
+    decision: Literal["approved", "declined"]
+    notes: Optional[str] = None
+
+
+class PortalWaiverRequest(BaseModel):
+    accepted: bool
+
+
+class ItinerarySuggestion(BaseModel):
+    title: str
+    description: str
+    confidence: float = Field(..., ge=0, le=1)
+
+
+class PricingSummary(BaseModel):
+    base_cost: Decimal
+    markup_value: Decimal
+    total_price: Decimal
+    margin_percent: float
+
+
+class PortalView(BaseModel):
+    itinerary: Itinerary
+    pricing: PricingSummary
+    available_documents: List[str]
+    payment_methods: List[str]
+    branding: Dict[str, Any]
+
+
+class AnalyticsDataPoint(BaseModel):
+    label: str
+    value: Decimal
+
+
+class AnalyticsOverview(BaseModel):
+    total_clients: int
+    total_itineraries: int
+    total_revenue: Decimal
+    upcoming_departures: int
+    average_margin: Optional[Decimal] = None
+    revenue_trend: List[AnalyticsDataPoint]
+    calculated_margin: Optional[Decimal] = None
+
+
+class InvoiceBase(BaseModel):
+    client_id: int
+    itinerary_id: Optional[int] = None
+    issue_date: date
+    due_date: date
+    amount: Decimal
+    currency: str = "USD"
+    status: str = "unpaid"
+
+
+class InvoiceCreate(InvoiceBase):
+    pass
+
+
+class InvoiceUpdate(BaseModel):
+    client_id: Optional[int] = None
+    itinerary_id: Optional[int] = None
+    issue_date: Optional[date] = None
+    due_date: Optional[date] = None
+    amount: Optional[Decimal] = None
+    currency: Optional[str] = None
+    status: Optional[str] = None
+
+
+class Invoice(InvoiceBase, TimestampMixin):
+    id: int
+
+
+PAYMENT_PROVIDER_IDS: tuple[str, ...] = tuple(SUPPORTED_PAYMENT_PROVIDERS.keys()) + ("manual",)
+
+
+class PaymentBase(BaseModel):
+    invoice_id: int
+    amount: Decimal
+    currency: str = "USD"
+    paid_on: date
+    method: Optional[str] = None
+    provider: str = Field("manual", description="Payment provider identifier")
+    status: str = Field("completed", description="Processing status e.g. pending, completed")
+    transaction_reference: Optional[str] = Field(
+        None, description="Provider transaction or collection reference"
+    )
+    fee_amount: Optional[Decimal] = Field(
+        None, description="Processing fee charged by the provider"
+    )
+    provider_metadata: Optional[Dict[str, Any]] = Field(
+        default=None, description="Optional provider-specific metadata payload"
+    )
+    notes: Optional[str] = None
+
+    @field_validator("provider")
+    @classmethod
+    def validate_provider(cls, value: str) -> str:
+        if value not in PAYMENT_PROVIDER_IDS:
+            raise ValueError(
+                f"Unsupported provider '{value}'. Supported providers: {', '.join(PAYMENT_PROVIDER_IDS)}"
+            )
+        return value
+
+
+class PaymentCreate(PaymentBase):
+    pass
+
+
+class PaymentUpdate(BaseModel):
+    invoice_id: Optional[int] = None
+    amount: Optional[Decimal] = None
+    currency: Optional[str] = None
+    paid_on: Optional[date] = None
+    method: Optional[str] = None
+    provider: Optional[str] = None
+    status: Optional[str] = None
+    transaction_reference: Optional[str] = None
+    fee_amount: Optional[Decimal] = None
+    provider_metadata: Optional[Dict[str, Any]] = None
+    notes: Optional[str] = None
+
+
+class Payment(PaymentBase, TimestampMixin):
+    id: int
+
+
+class PaymentGatewayBase(BaseModel):
+    provider: str
+    label: Optional[str] = None
+    credentials: Optional[str] = None
+    active: bool = True
+    agency_id: Optional[int] = None
+
+
+class PaymentGatewayCreate(PaymentGatewayBase):
+    pass
+
+
+class PaymentGatewayUpdate(BaseModel):
+    provider: Optional[str] = None
+    label: Optional[str] = None
+    credentials: Optional[str] = None
+    active: Optional[bool] = None
+    agency_id: Optional[int] = None
+
+
+class PaymentGateway(PaymentGatewayBase, TimestampMixin):
+    id: int
+
+
+class PaymentProviderInfo(BaseModel):
+    id: str
+    display_name: str
+    payment_type: Literal["mobile_money", "card", "digital_wallet"]
+    supported_currencies: List[str]
+    settlement_timeframe: str
+    requires_checkout_url: bool
+    transaction_fee_percent: float
+
+
+class PaymentInitiationRequest(BaseModel):
+    invoice_id: int
+    amount: Decimal
+    currency: str
+    provider: str
+    customer_reference: Optional[str] = None
+
+
+class PaymentInitiationResponse(BaseModel):
+    provider: str
+    status: str
+    transaction_reference: str
+    checkout_url: Optional[str] = None
+    message: str
+    payment_id: int
+
+
+class ExpenseBase(BaseModel):
+    description: str
+    amount: Decimal
+    currency: str = "USD"
+    category: Optional[str] = None
+    incurred_on: date
+    reimbursable: bool = False
+
+
+class ExpenseCreate(ExpenseBase):
+    pass
+
+
+class ExpenseUpdate(BaseModel):
+    description: Optional[str] = None
+    amount: Optional[Decimal] = None
+    currency: Optional[str] = None
+    category: Optional[str] = None
+    incurred_on: Optional[date] = None
+    reimbursable: Optional[bool] = None
+
+
+class Expense(ExpenseBase, TimestampMixin):
+    id: int
+
+
+class SupplierRateBase(BaseModel):
+    title: str
+    category: str = Field("accommodation", description="Inventory type e.g. accommodation")
+    description: Optional[str] = None
+    rate_type: str = Field("per_night", description="Billing cadence e.g. per_night, per_trip")
+    unit: Optional[str] = Field(None, description="Unit such as double room or SUV")
+    capacity: Optional[int] = Field(None, ge=1)
+    price: Decimal
+    currency: str = "USD"
+    valid_from: Optional[date] = None
+    valid_to: Optional[date] = None
+    refundable: bool = True
+    external_code: Optional[str] = Field(None, description="Identifier from external provider")
+    availability_notes: Optional[str] = None
+
+    @field_validator("valid_to")
+    @classmethod
+    def validate_date_range(cls, valid_to: Optional[date], info: ValidationInfo) -> Optional[date]:
+        valid_from = info.data.get("valid_from")
+        if valid_from and valid_to and valid_to < valid_from:
+            raise ValueError("valid_to must be greater than or equal to valid_from")
+        return valid_to
+
+
+class SupplierRateCreate(SupplierRateBase):
+    pass
+
+
+class SupplierRateUpdate(BaseModel):
+    title: Optional[str] = None
+    category: Optional[str] = None
+    description: Optional[str] = None
+    rate_type: Optional[str] = None
+    unit: Optional[str] = None
+    capacity: Optional[int] = Field(None, ge=1)
+    price: Optional[Decimal] = None
+    currency: Optional[str] = None
+    valid_from: Optional[date] = None
+    valid_to: Optional[date] = None
+    refundable: Optional[bool] = None
+    external_code: Optional[str] = None
+    availability_notes: Optional[str] = None
+
+
+class SupplierRate(SupplierRateBase, TimestampMixin):
+    id: int
+    supplier_id: int
+
+
+class SupplierBase(BaseModel):
+    name: str
+    supplier_type: str = Field("lodging", description="Supplier segment such as lodging or transport")
+    description: Optional[str] = None
+    contact_email: Optional[EmailStr] = None
+    contact_phone: Optional[str] = None
+    website: Optional[str] = None
+    location: Optional[str] = None
+    active: bool = True
+    notes: Optional[str] = None
+    integration_provider: Optional[str] = Field(
+        None, description="External provider powering automated updates"
+    )
+    integration_reference: Optional[str] = Field(
+        None, description="Identifier understood by the integration provider"
+    )
+    agency_id: Optional[int] = Field(None, description="Travel agency the supplier belongs to")
+
+
+class SupplierCreate(SupplierBase):
+    pass
+
+
+class SupplierUpdate(BaseModel):
+    name: Optional[str] = None
+    supplier_type: Optional[str] = None
+    description: Optional[str] = None
+    contact_email: Optional[EmailStr] = None
+    contact_phone: Optional[str] = None
+    website: Optional[str] = None
+    location: Optional[str] = None
+    active: Optional[bool] = None
+    notes: Optional[str] = None
+    integration_provider: Optional[str] = None
+    integration_reference: Optional[str] = None
+    agency_id: Optional[int] = None
+
+
+class Supplier(SupplierBase, TimestampMixin):
+    id: int
+    rates: List[SupplierRate] = Field(default_factory=list)
+
+
+class SupplierIntegration(BaseModel):
+    provider: str
+    resources: List[str]
+
+
+class SubscriptionPackageBase(BaseModel):
+    name: str
+    description: Optional[str] = Field(None, description="Marketing summary for the plan")
+    price: Decimal = Field(..., description="Package price for agencies")
+    currency: str = Field("USD", description="Currency code for pricing")
+    billing_cycle: str = Field(
+        "monthly",
+        description="Billing cadence such as monthly, quarterly, or yearly",
+    )
+    features: List[str] = Field(
+        default_factory=list,
+        description="Key selling points rendered on the landing page",
+    )
+    modules: List[str] = Field(
+        default_factory=lambda: ["core"],
+        description="Functional modules unlocked by the plan (e.g. core, flight_booking)",
+    )
+    is_active: bool = True
+
+    model_config = ConfigDict(from_attributes=True)
+
+    @field_validator("features", mode="before")
+    @classmethod
+    def normalize_features(cls, value: Any) -> List[str]:
+        if value is None:
+            return []
+        if isinstance(value, str):
+            return [feature.strip() for feature in value.split(",") if feature.strip()]
+        if isinstance(value, list):
+            return [str(feature).strip() for feature in value if str(feature).strip()]
+        return []
+
+    @field_validator("modules", mode="before")
+    @classmethod
+    def normalize_modules(cls, value: Any) -> List[str]:
+        if value is None:
+            return ["core"]
+        if isinstance(value, str):
+            modules = [module.strip() for module in value.split(",") if module.strip()]
+        elif isinstance(value, list):
+            modules = [str(module).strip() for module in value if str(module).strip()]
+        else:
+            modules = []
+        normalized: List[str] = []
+        for module in modules or ["core"]:
+            normalized_module = module.lower()
+            if normalized_module and normalized_module not in normalized:
+                normalized.append(normalized_module)
+        return normalized or ["core"]
+
+
+class SubscriptionPackageCreate(SubscriptionPackageBase):
+    slug: Optional[str] = Field(
+        None, description="Optional custom slug for marketing and analytics"
+    )
+
+
+class SubscriptionPackageUpdate(BaseModel):
+    name: Optional[str] = None
+    slug: Optional[str] = None
+    description: Optional[str] = None
+    price: Optional[Decimal] = None
+    currency: Optional[str] = None
+    billing_cycle: Optional[str] = None
+    features: Optional[List[str]] = None
+    is_active: Optional[bool] = None
+    modules: Optional[List[str]] = None
+
+    @field_validator("features", mode="before")
+    @classmethod
+    def normalize_features(cls, value: Any) -> Optional[List[str]]:
+        if value is None:
+            return None
+        if isinstance(value, str):
+            return [feature.strip() for feature in value.split(",") if feature.strip()]
+        if isinstance(value, list):
+            return [str(feature).strip() for feature in value if str(feature).strip()]
+        return None
+
+    @field_validator("modules", mode="before")
+    @classmethod
+    def normalize_modules(cls, value: Any) -> Optional[List[str]]:
+        if value is None:
+            return None
+        if isinstance(value, str):
+            modules = [module.strip() for module in value.split(",") if module.strip()]
+        elif isinstance(value, list):
+            modules = [str(module).strip() for module in value if str(module).strip()]
+        else:
+            modules = []
+        normalized: List[str] = []
+        for module in modules:
+            normalized_module = module.lower()
+            if normalized_module and normalized_module not in normalized:
+                normalized.append(normalized_module)
+        return normalized
+
+
+class SubscriptionPackage(SubscriptionPackageBase, TimestampMixin):
+    id: int
+    slug: str
+
+
+class AgencySubscriptionBase(BaseModel):
+    status: str = Field("active", description="Subscription status e.g. trial, active, cancelled")
+    start_date: Optional[date] = Field(None, description="Subscription start date")
+    end_date: Optional[date] = Field(None, description="Subscription end date if cancelled")
+    auto_renew: bool = True
+    notes: Optional[str] = Field(None, description="Internal notes about the subscription")
+
+
+class AgencySubscriptionCreate(AgencySubscriptionBase):
+    agency_id: int
+    package_id: int
+
+
+class AgencySubscriptionUpdate(BaseModel):
+    package_id: Optional[int] = None
+    status: Optional[str] = None
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
+    auto_renew: Optional[bool] = None
+    notes: Optional[str] = None
+
+
+class AgencySubscription(AgencySubscriptionBase, TimestampMixin):
+    id: int
+    agency_id: int
+    package_id: int
+    package: Optional[SubscriptionPackage] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class TravelAgencyBase(BaseModel):
+    name: str
+    slug: Optional[str] = Field(None, description="SEO friendly slug")
+    contact_email: Optional[EmailStr] = None
+    contact_phone: Optional[str] = None
+    website: Optional[str] = None
+    address: Optional[str] = None
+    description: Optional[str] = None
+    active: bool = True
+    default_currency: str = "USD"
+    logo_url: Optional[str] = Field(None, description="Brand logo path or URL")
+    brand_primary_color: Optional[str] = Field(
+        None, description="Primary HEX/RGB color for marketing collateral"
+    )
+    brand_secondary_color: Optional[str] = Field(
+        None, description="Secondary HEX/RGB color for marketing collateral"
+    )
+    invoice_footer: Optional[str] = Field(
+        None, description="Default notes appended to invoices"
+    )
+    powered_by_label: Optional[str] = Field(
+        None,
+        description="Branding credit shown on client-facing documents",
+    )
+
+
+class TravelAgencyCreate(TravelAgencyBase):
+    pass
+
+
+class TravelAgencyUpdate(BaseModel):
+    name: Optional[str] = None
+    slug: Optional[str] = None
+    contact_email: Optional[EmailStr] = None
+    contact_phone: Optional[str] = None
+    website: Optional[str] = None
+    address: Optional[str] = None
+    description: Optional[str] = None
+    active: Optional[bool] = None
+    default_currency: Optional[str] = None
+    logo_url: Optional[str] = None
+    brand_primary_color: Optional[str] = None
+    brand_secondary_color: Optional[str] = None
+    invoice_footer: Optional[str] = None
+    powered_by_label: Optional[str] = None
+
+
+class TravelAgency(TravelAgencyBase, TimestampMixin):
+    id: int
+    subscriptions: List[AgencySubscription] = Field(default_factory=list)
+
+
+class UserBase(BaseModel):
+    email: EmailStr
+    full_name: Optional[str] = None
+    whatsapp_number: Optional[str] = None
+    agency_id: Optional[int] = None
+    is_active: bool = True
+    is_admin: bool = False
+    is_super_admin: bool = False
+    role: str = Field("staff", description="Role within the platform or agency")
+
+    @field_validator("role")
+    @classmethod
+    def validate_role(cls, value: str) -> str:
+        return _validate_role(value, USER_ROLES)
+
+
+class UserCreate(UserBase):
+    password: str = Field(..., min_length=8)
+
+
+class UserUpdate(BaseModel):
+    full_name: Optional[str] = None
+    whatsapp_number: Optional[str] = None
+    password: Optional[str] = Field(None, min_length=8)
+    is_active: Optional[bool] = None
+    is_admin: Optional[bool] = None
+    agency_id: Optional[int] = None
+    is_super_admin: Optional[bool] = None
+    role: Optional[str] = Field(None, description="Updated role designation")
+
+    @field_validator("role")
+    @classmethod
+    def validate_role(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return value
+        return _validate_role(value, USER_ROLES)
+
+
+class User(UserBase, TimestampMixin):
+    id: int
+    two_factor_enabled: bool = False
+
+
+class AgencyUserCreate(BaseModel):
+    email: EmailStr
+    full_name: Optional[str] = None
+    whatsapp_number: Optional[str] = None
+    password: str = Field(..., min_length=8)
+    role: str = Field("staff", description="Agency-specific role assignment")
+    is_active: bool = True
+    is_admin: Optional[bool] = None
+
+    @field_validator("role")
+    @classmethod
+    def validate_role(cls, value: str) -> str:
+        return _validate_role(value, ASSIGNABLE_AGENCY_ROLES)
+
+
+class AgencyUserUpdate(BaseModel):
+    full_name: Optional[str] = None
+    whatsapp_number: Optional[str] = None
+    password: Optional[str] = Field(None, min_length=8)
+    role: Optional[str] = Field(None)
+    is_active: Optional[bool] = None
+    is_admin: Optional[bool] = None
+
+    @field_validator("role")
+    @classmethod
+    def validate_role(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return value
+        return _validate_role(value, ASSIGNABLE_AGENCY_ROLES)
+
+
+class SignupRequest(BaseModel):
+    email: EmailStr
+    password: str = Field(..., min_length=8)
+    full_name: Optional[str] = None
+    whatsapp_number: Optional[str] = None
+    agency_id: Optional[int] = None
+    agency_name: Optional[str] = Field(
+        None, description="Optional agency name to create alongside the user"
+    )
+    role: Optional[str] = Field(
+        None,
+        description="Desired role when joining an existing agency",
+    )
+
+    @field_validator("role")
+    @classmethod
+    def validate_role(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return value
+        return _validate_role(value, ASSIGNABLE_AGENCY_ROLES)
+
+
+class LoginRequest(BaseModel):
+    email: EmailStr
+    password: str
+    otp_code: Optional[str] = None
+
+
+class LoginResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    user: User
+    two_factor_required: bool = False
+
+
+class TwoFactorSetupRequest(BaseModel):
+    email: EmailStr
+    password: str
+
+
+class TwoFactorSetupResponse(BaseModel):
+    secret: str
+    provisioning_uri: str
+
+
+class TwoFactorVerifyRequest(BaseModel):
+    email: EmailStr
+    otp_code: str
+
+
+class IntegrationCredentialBase(BaseModel):
+    provider: str
+    api_key: str
+    description: Optional[str] = None
+    active: bool = True
+    agency_id: int
+
+
+class IntegrationCredentialCreate(IntegrationCredentialBase):
+    pass
+
+
+class IntegrationCredentialUpdate(BaseModel):
+    api_key: Optional[str] = None
+    description: Optional[str] = None
+    active: Optional[bool] = None
+
+
+class IntegrationCredential(IntegrationCredentialBase, TimestampMixin):
+    id: int
+
+
+class NotificationLog(BaseModel):
+    id: int
+    event_type: str
+    channel: str
+    recipient: str
+    subject: Optional[str]
+    message: str
+    status: str
+    context: Optional[str]
+    created_at: datetime
+    user_id: Optional[int]
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class SiteSettingBase(BaseModel):
+    key: str
+    value: str
+
+
+class SiteSettingCreate(SiteSettingBase):
+    pass
+
+
+class SiteSettingUpdate(BaseModel):
+    value: str
+
+
+class SiteSetting(SiteSettingBase, TimestampMixin):
+    id: int
+
+
+class LandingPageContent(BaseModel):
+    headline: str
+    subheadline: str
+    call_to_action: str
+    seo_description: str
+    hero_image_url: Optional[str] = None
+    meta_keywords: Optional[List[str]] = None
+
+
+class LandingPageContentUpdate(BaseModel):
+    headline: Optional[str] = None
+    subheadline: Optional[str] = None
+    call_to_action: Optional[str] = None
+    seo_description: Optional[str] = None
+    hero_image_url: Optional[str] = None
+    meta_keywords: Optional[List[str]] = None
+
+
+class FlightProvider(BaseModel):
+    id: str
+    display_name: str
+    supports_ticketing: bool
+    modules: List[str]
+    description: Optional[str] = None
+
+
+class FlightPassenger(BaseModel):
+    first_name: str
+    last_name: str
+    passenger_type: str = Field(
+        "ADT", description="Passenger type code such as ADT, CHD, or INF"
+    )
+    document_number: Optional[str] = Field(
+        None, description="Optional passport or identification number"
+    )
+
+
+class FlightSegmentBase(BaseModel):
+    segment_number: int
+    origin: str
+    destination: str
+    departure: datetime
+    arrival: datetime
+    carrier: str
+    flight_number: str
+    aircraft: Optional[str] = None
+    cabin: Optional[str] = None
+    fare_class: Optional[str] = None
+    baggage: Optional[str] = None
+
+
+class FlightSegmentCreate(FlightSegmentBase):
+    pass
+
+
+class FlightSegment(FlightSegmentBase, TimestampMixin):
+    id: int
+
+
+class FlightBookingBase(BaseModel):
+    provider: str = Field("amadeus", description="External distribution provider name")
+    provider_offer_id: Optional[str] = Field(
+        None, description="Identifier of the selected offer returned from the provider"
+    )
+    status: str = Field(
+        "quote", description="Booking status such as quote, booked, ticketed, cancelled"
+    )
+    total_price: Optional[Decimal] = Field(
+        None, description="Monetary total for the booking including taxes"
+    )
+    currency: str = Field("USD", description="Pricing currency code")
+    passengers: List[FlightPassenger] = Field(
+        default_factory=list, description="Passenger roster attached to the booking"
+    )
+    offer_snapshot: Optional[dict[str, Any]] = Field(
+        None, description="Raw payload stored from the provider offer for auditing"
+    )
+    notes: Optional[str] = Field(None, description="Internal comments about the booking")
+
+
+class FlightBookingCreate(FlightBookingBase):
+    agency_id: int
+    client_id: Optional[int] = None
+    itinerary_id: Optional[int] = None
+    segments: List[FlightSegmentCreate]
+
+
+class FlightBookingUpdate(BaseModel):
+    status: Optional[str] = None
+    notes: Optional[str] = None
+    ticket_document_url: Optional[str] = None
+
+
+class FlightBooking(FlightBookingBase, TimestampMixin):
+    id: int
+    agency_id: int
+    client_id: Optional[int]
+    itinerary_id: Optional[int]
+    pnr: str
+    ticket_numbers: Optional[List[str]] = None
+    ticket_document_url: Optional[str] = None
+    ticket_issued_at: Optional[datetime] = None
+    segments: List[FlightSegment] = Field(default_factory=list)
+
+
+class FlightTicketIssueRequest(BaseModel):
+    ticket_numbers: List[str]
+    document_url: Optional[str] = Field(
+        None, description="Optional hosted PDF URL or storage reference for the ticket"
+    )
+    status: Optional[str] = Field(
+        None, description="Explicit status to set after issuing tickets (defaults to ticketed)",
+    )
+
+
+class FlightOfferSegment(BaseModel):
+    origin: str
+    destination: str
+    departure: datetime
+    arrival: datetime
+    carrier: str
+    flight_number: str
+    duration_minutes: int
+    cabin: Optional[str] = None
+    fare_class: Optional[str] = None
+
+
+class FlightOffer(BaseModel):
+    id: str
+    provider: str
+    total_price: Decimal
+    currency: str
+    segments: List[FlightOfferSegment]
+    fare_basis: Optional[str] = None
+
+
+class FlightSearchSegment(BaseModel):
+    origin: str = Field(..., min_length=3, max_length=3, description="IATA origin code")
+    destination: str = Field(
+        ..., min_length=3, max_length=3, description="IATA destination code"
+    )
+    departure_date: date
+
+
+class FlightSearchRequest(BaseModel):
+    trip_type: Literal["one_way", "round_trip", "multi_city"] = Field(
+        "one_way", description="Journey type such as one_way, round_trip, or multi_city"
+    )
+    origin: Optional[str] = Field(
+        None, min_length=3, max_length=3, description="IATA origin code"
+    )
+    destination: Optional[str] = Field(
+        None, min_length=3, max_length=3, description="IATA destination code"
+    )
+    departure_date: Optional[date] = None
+    return_date: Optional[date] = None
+    segments: Optional[List[FlightSearchSegment]] = Field(
+        None,
+        description="Segment definitions for multi-city journeys; requires at least two segments",
+    )
+    passengers: int = Field(1, ge=1, le=9)
+    travel_class: Optional[str] = Field(
+        None, description="Preferred cabin such as ECONOMY, PREMIUM_ECONOMY, BUSINESS"
+    )
+
+    @field_validator("segments", mode="before")
+    @classmethod
+    def parse_segments(cls, value: object) -> object:
+        if value in (None, ""):
+            return None
+        if isinstance(value, str):
+            try:
+                parsed = json.loads(value)
+            except json.JSONDecodeError as exc:  # pragma: no cover - defensive
+                raise ValueError(
+                    "segments must be a JSON array of segment objects"
+                ) from exc
+            return parsed
+        if isinstance(value, list) and value:
+            if len(value) == 1 and isinstance(value[0], str):
+                try:
+                    parsed = json.loads(value[0])
+                except json.JSONDecodeError as exc:  # pragma: no cover - defensive
+                    raise ValueError(
+                        "segments must be a JSON array of segment objects"
+                    ) from exc
+                return parsed
+            return value
+        return value
+
+    @model_validator(mode="after")
+    def validate_trip_configuration(self) -> "FlightSearchRequest":
+        if self.trip_type in {"one_way", "round_trip"}:
+            missing_fields = [
+                field
+                for field in ("origin", "destination", "departure_date")
+                if getattr(self, field) is None
+            ]
+            if missing_fields:
+                raise ValueError(
+                    "origin, destination, and departure_date are required for one_way and round_trip searches"
+                )
+            if self.trip_type == "round_trip" and self.return_date is None:
+                raise ValueError("return_date is required for round_trip searches")
+        if self.trip_type == "multi_city":
+            if not self.segments or len(self.segments) < 2:
+                raise ValueError(
+                    "multi_city searches require at least two segments with origin, destination, and departure_date"
+                )
+        return self
+
+
+class ItineraryInvoiceCreate(BaseModel):
+    issue_date: date
+    due_date: date
+    amount: Optional[Decimal] = Field(
+        None, description="Invoice amount; defaults to itinerary estimate when omitted"
+    )
+    currency: Optional[str] = Field(
+        None, description="Currency to use; defaults to itinerary estimate currency"
+    )
+    notes: Optional[str] = Field(
+        None, description="Optional memo or reference for the generated invoice"
+    )
+
+
+class NotificationSummary(BaseModel):
+    total_sent: int
+    by_channel: Dict[str, int]

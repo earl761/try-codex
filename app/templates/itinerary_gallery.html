@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>{{ itinerary.title }} - Gallery Layout</title>
+    {% set primary = itinerary.brand_primary_color or '#14532d' %}
+    {% set secondary = itinerary.brand_secondary_color or '#84cc16' %}
+    <style>
+        @page { margin: 20px; }
+        body {
+            margin: 0;
+            font-family: 'Montserrat', Arial, sans-serif;
+            background: #f3fff4;
+            color: #1f2937;
+        }
+        header {
+            background: radial-gradient(circle at top left, {{ secondary }}55, transparent 60%), #ffffff;
+            padding: 36px 48px;
+            display: flex;
+            align-items: flex-end;
+            justify-content: space-between;
+        }
+        header h1 { margin: 0; font-size: 2.6em; color: {{ primary }}; }
+        header p { margin: 6px 0; color: #4b5563; }
+        .badge { display: inline-block; background: {{ primary }}; color: #fff; padding: 6px 14px; border-radius: 999px; font-size: 0.75em; letter-spacing: 0.06em; }
+        .logo { max-height: 120px; border-radius: 24px; box-shadow: 0 18px 40px rgba(20, 83, 45, 0.25); }
+        .gallery-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+            gap: 18px;
+            padding: 40px 48px 24px;
+        }
+        .gallery-card {
+            border-radius: 24px;
+            overflow: hidden;
+            background: #ffffff;
+            box-shadow: 0 25px 45px rgba(15, 118, 110, 0.12);
+            display: flex;
+            flex-direction: column;
+        }
+        .gallery-card img {
+            width: 100%;
+            height: 180px;
+            object-fit: cover;
+        }
+        .gallery-card .body {
+            padding: 18px 20px 22px;
+        }
+        .gallery-card h3 { margin: 0; color: {{ primary }}; font-size: 1.2em; }
+        .gallery-card p { margin: 10px 0 0; font-size: 0.95em; color: #4b5563; }
+        .gallery-card span { display: inline-block; margin-top: 12px; font-size: 0.75em; text-transform: uppercase; letter-spacing: 0.08em; color: {{ secondary }}; }
+        .sidebar {
+            padding: 0 48px 48px;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: 24px;
+        }
+        .card {
+            background: #ffffff;
+            border-radius: 22px;
+            padding: 24px;
+            box-shadow: 0 22px 35px rgba(34, 197, 94, 0.14);
+        }
+        .card h2 { margin-top: 0; color: {{ primary }}; letter-spacing: 0.06em; text-transform: uppercase; font-size: 0.9em; }
+        .extension {
+            border-bottom: 1px solid rgba(15, 118, 110, 0.15);
+            padding: 12px 0;
+        }
+        .extension:last-child { border-bottom: none; }
+        .branding-footer {
+            padding: 24px 48px 48px;
+            text-align: center;
+            color: #4b5563;
+            font-size: 0.9em;
+        }
+        .branding-footer .powered-by {
+            margin-top: 8px;
+            font-size: 0.75em;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            color: {{ primary }};
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div>
+            <h1>{{ itinerary.title }}</h1>
+            <p>{{ itinerary.start_date }} - {{ itinerary.end_date }}</p>
+            <p>{{ itinerary.client.name }}{% if itinerary.client.email %} &lt;{{ itinerary.client.email }}&gt;{% endif %}</p>
+            <div class="badge">{{ itinerary.status|title }}</div>
+        </div>
+        {% if itinerary.brand_logo_url %}
+        <img class="logo" src="{{ itinerary.brand_logo_url }}" alt="{{ itinerary.title }}">
+        {% endif %}
+    </header>
+
+    <section class="gallery-grid">
+        {% for item in itinerary.items|sort(attribute='day_number') %}
+        <article class="gallery-card">
+            {% if item.media and item.media[0].asset.optimized_path %}
+            <img src="{{ item.media[0].asset.optimized_path }}" alt="{{ item.media[0].asset.alt_text or item.title }}">
+            {% else %}
+            <img src="https://images.unsplash.com/photo-1526779259212-939e64788e3c?auto=format&fit=crop&w=800&q=80" alt="{{ item.title }}">
+            {% endif %}
+            <div class="body">
+                <h3>Day {{ item.day_number }} &mdash; {{ item.title }}</h3>
+                <span>{{ item.category|replace('_', ' ')|title }}{% if item.location %} • {{ item.location }}{% endif %}</span>
+                {% if item.description %}
+                <p>{{ item.description }}</p>
+                {% endif %}
+                {% if item.estimated_cost %}
+                <p><strong>{{ '%.2f'|format(item.estimated_cost) }} {{ item.estimated_currency }}</strong></p>
+                {% endif %}
+            </div>
+        </article>
+        {% endfor %}
+    </section>
+
+    <section class="sidebar">
+        {% if itinerary.extensions %}
+        <div class="card">
+            <h2>Extensions</h2>
+            {% for extension in itinerary.extensions %}
+            <div class="extension">
+                <strong>{{ extension.title }}</strong>
+                {% if extension.description %}<p>{{ extension.description }}</p>{% endif %}
+                {% if extension.additional_cost %}
+                <p>{{ '%.2f'|format(extension.additional_cost) }} {{ extension.currency }}</p>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        {% if itinerary.notes %}
+        <div class="card">
+            <h2>Traveler Notes</h2>
+            {% for note in itinerary.notes %}
+            <div class="extension">
+                <strong>{{ note.title or note.category|title }}</strong>
+                <p>{{ note.content }}</p>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        {% if itinerary.estimate_amount %}
+        <div class="card">
+            <h2>Estimate</h2>
+            <p><strong>{{ '%.2f'|format(itinerary.estimate_amount) }} {{ itinerary.estimate_currency }}</strong></p>
+            {% if itinerary.total_price %}
+            <p>Package Total: {{ '%.2f'|format(itinerary.total_price) }}</p>
+            {% endif %}
+        </div>
+        {% endif %}
+    </section>
+
+    <section class="branding-footer">
+        {% if itinerary.brand_footer_note %}
+        <div>{{ itinerary.brand_footer_note }}</div>
+        {% endif %}
+        <div class="powered-by">{{ branding.powered_by }}</div>
+    </section>
+</body>
+</html>

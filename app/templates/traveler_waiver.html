@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Traveler Waiver • {{ itinerary.title }}</title>
+    <style>
+      body {
+        font-family: "Inter", Arial, sans-serif;
+        background: #f2f4f8;
+        margin: 0;
+        padding: 1.5rem;
+        color: #1f2937;
+      }
+      main {
+        background: #fff;
+        border-radius: 1rem;
+        padding: 2rem;
+        max-width: 720px;
+        margin: 0 auto;
+        box-shadow: 0 18px 40px rgba(31, 58, 147, 0.1);
+      }
+      h1 {
+        font-size: 1.65rem;
+        margin-bottom: 0.75rem;
+      }
+      ol {
+        padding-left: 1.25rem;
+      }
+      .signatures {
+        margin-top: 2rem;
+        display: grid;
+        gap: 1.5rem;
+      }
+      .signatures div {
+        border-top: 1px solid #cfd8e3;
+        padding-top: 0.5rem;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Traveler Waiver &amp; Release</h1>
+      <p>
+        By signing this waiver, {{ itinerary.client.name }} acknowledges their understanding of the
+        itinerary “{{ itinerary.title }}” scheduled between {{ itinerary.start_date.strftime('%B %d, %Y') }} and
+        {{ itinerary.end_date.strftime('%B %d, %Y') }}.
+      </p>
+      <ol>
+        <li>
+          The traveler accepts that some experiences may involve inherent risks and agrees to follow all
+          safety instructions provided by guides and suppliers.
+        </li>
+        <li>
+          The traveler confirms adequate travel insurance coverage for medical emergencies, trip
+          interruption, and personal belongings.
+        </li>
+        <li>
+          The traveler agrees to notify the agency immediately of any medical conditions or accessibility
+          needs that may impact service delivery.
+        </li>
+      </ol>
+      <p>
+        Questions? Contact {{ branding.agency.contact_email if branding.agency else 'support@example.com' }}.
+      </p>
+
+      <div class="signatures">
+        <div>
+          Traveler Signature: ________________________________
+        </div>
+        <div>
+          Date: ________________________________
+        </div>
+      </div>
+    </main>
+  </body>
+</html>

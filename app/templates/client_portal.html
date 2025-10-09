@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Client Portal • {{ portal.itinerary.title }}</title>
+    <style>
+      :root {
+        color-scheme: light;
+      }
+      body {
+        margin: 0;
+        font-family: "Inter", system-ui, sans-serif;
+        background: linear-gradient(180deg, #0f172a 0%, #1f3a93 100%);
+        color: #0f172a;
+      }
+      header {
+        padding: clamp(1.5rem, 5vw, 3rem) clamp(1.5rem, 6vw, 4rem);
+        color: #fff;
+        text-align: center;
+      }
+      header h1 {
+        margin-bottom: 0.5rem;
+        font-size: clamp(1.75rem, 3vw, 2.5rem);
+      }
+      main {
+        background: #f8fafc;
+        border-radius: 2rem 2rem 0 0;
+        padding: clamp(1.5rem, 4vw, 3rem);
+        min-height: 70vh;
+      }
+      .card {
+        background: #fff;
+        border-radius: 1.5rem;
+        padding: clamp(1.25rem, 3vw, 2rem);
+        box-shadow: 0 20px 40px rgba(15, 23, 42, 0.12);
+        margin-bottom: 1.75rem;
+      }
+      .grid {
+        display: grid;
+        gap: 1.5rem;
+      }
+      @media (min-width: 768px) {
+        .grid-two {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+      }
+      button, .cta {
+        display: inline-block;
+        border: none;
+        border-radius: 999px;
+        padding: 0.85rem 1.75rem;
+        font-weight: 600;
+        background: {{ portal.branding.primary_color or '#1F3A93' }};
+        color: #fff;
+        text-decoration: none;
+        box-shadow: 0 12px 24px rgba(31, 58, 147, 0.3);
+      }
+      footer {
+        text-align: center;
+        color: rgba(15, 23, 42, 0.75);
+        font-size: 0.9rem;
+        margin-top: 2rem;
+      }
+      ul {
+        padding-left: 1.25rem;
+      }
+      .chip {
+        display: inline-block;
+        background: rgba(31, 58, 147, 0.1);
+        color: {{ portal.branding.primary_color or '#1F3A93' }};
+        padding: 0.35rem 0.75rem;
+        border-radius: 999px;
+        font-size: 0.8rem;
+        margin-right: 0.4rem;
+        margin-bottom: 0.4rem;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>{{ portal.itinerary.title }}</h1>
+      <p>{{ portal.branding.agency_name or 'Hosted by your travel expert' }}</p>
+    </header>
+
+    <main>
+      <section class="card grid grid-two">
+        <div>
+          <h2>Trip Snapshot</h2>
+          <p>
+            {{ portal.itinerary.start_date.strftime('%B %d, %Y') }} →
+            {{ portal.itinerary.end_date.strftime('%B %d, %Y') }}
+          </p>
+          <p>Estimate Total: {{ portal.pricing.total_price }} {{ portal.itinerary.estimate_currency }}</p>
+          <p>Margin: {{ portal.pricing.margin_percent }}%</p>
+        </div>
+        <div>
+          <h3>Payments</h3>
+          <p>Available methods:</p>
+          {% for method in portal.payment_methods %}
+          <span class="chip">{{ method.replace('_', ' ').title() }}</span>
+          {% endfor %}
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Documents</h2>
+        <p>Downloadable formats prepared just for you:</p>
+        <ul>
+          {% for document in portal.available_documents %}
+          <li>
+            <a class="cta" href="/itineraries/{{ portal.itinerary.id }}/documents/{{ document }}" target="_blank" rel="noopener">
+              {{ document.replace('_', ' ').title() }}
+            </a>
+          </li>
+          {% endfor %}
+        </ul>
+      </section>
+
+      <section class="card">
+        <h2>Collaborate</h2>
+        <p>
+          Share feedback or approve this plan by replying to your consultant or using the portal actions in
+          the app. Token reference: {{ token }}
+        </p>
+      </section>
+    </main>
+
+    <footer>
+      Powered by {{ portal.branding.powered_by }} — {{ portal.branding.app_name }}
+    </footer>
+  </body>
+</html>

@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Visa Support Letter • {{ itinerary.client.name }}</title>
+    <style>
+      body {
+        font-family: Georgia, "Times New Roman", serif;
+        margin: 2rem auto;
+        max-width: 720px;
+        color: #2b2d42;
+        line-height: 1.6;
+      }
+      header {
+        border-bottom: 2px solid {{ branding.primary_color or '#1F3A93' }};
+        padding-bottom: 1rem;
+        margin-bottom: 2rem;
+      }
+      h1 {
+        font-size: 1.5rem;
+        text-transform: uppercase;
+        letter-spacing: 0.12rem;
+      }
+      .signature {
+        margin-top: 3rem;
+      }
+      .muted {
+        color: #6c6f7d;
+        font-size: 0.85rem;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>{{ branding.agency.name if branding.agency else 'Tour Planner Agency' }}</h1>
+      <p>{{ branding.powered_by }}</p>
+    </header>
+
+    <p>{{ generated_at.strftime('%B %d, %Y') }}</p>
+
+    <p>To Whom It May Concern,</p>
+
+    <p>
+      This letter confirms that {{ itinerary.client.name }} is scheduled to travel with our
+      agency from {{ itinerary.start_date.strftime('%B %d, %Y') }} to {{ itinerary.end_date.strftime('%B %d, %Y') }}
+      under the itinerary titled “{{ itinerary.title }}”. All accommodations, transfers, and
+      activities have been pre-arranged and paid in accordance with our booking terms.
+    </p>
+
+    <p>
+      We kindly request that any necessary visas or entry documentation be granted to facilitate
+      this journey. Our operations team remains available to verify arrangements or supply
+      additional documentation upon request.
+    </p>
+
+    <p>
+      Please contact us at {{ branding.agency.contact_email if branding.agency else 'support@example.com' }}
+      or {{ branding.agency.contact_phone if branding.agency else '+0000000' }} for further confirmation.
+    </p>
+
+    <p class="signature">
+      Sincerely,<br />
+      {{ branding.agency.name if branding.agency else 'Tour Planner Specialist' }}<br />
+      {{ branding.app_name }}
+    </p>
+
+    <p class="muted">Powered by {{ branding.app_name }} • {{ branding.powered_by }}</p>
+  </body>
+</html>
