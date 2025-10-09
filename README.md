@@ -71,6 +71,14 @@ The API will be available at <http://127.0.0.1:8000>. Interactive documentation 
 
 ### Database
 
+SQLite is used by default (stored in `tour_planner.db`). Set the `DATABASE_URL` environment variable to point at another engine – PostgreSQL and MySQL are both supported out of the box.
+
+Example URLs:
+
+- **PostgreSQL**: `export DATABASE_URL="postgresql+psycopg2://user:password@localhost:5432/tour_planner"`
+- **MySQL**: `export DATABASE_URL="mysql+pymysql://user:password@localhost:3306/tour_planner"`
+
+Install the project requirements to pull in the necessary drivers (`psycopg2-binary` for PostgreSQL, `PyMySQL` for MySQL). The schema is created automatically on startup regardless of the database backend.
 SQLite is used by default (stored in `tour_planner.db`). The schema is created automatically on startup. Adjust the connection string in `app/database.py` to target a different database engine.
 
 ### Project Structure
