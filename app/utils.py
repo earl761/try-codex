@@ -7,6 +7,11 @@ from io import BytesIO
 from pathlib import Path
 from random import randint
 from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional
+from typing import Dict, Iterable, List, Optional
+from io import BytesIO
+from pathlib import Path
+from random import randint
+from typing import Iterable, List, Optional
 from uuid import uuid4
 
 from jinja2 import Environment, PackageLoader, select_autoescape
@@ -224,6 +229,26 @@ def generate_itinerary_suggestions(
             }
         )
     return suggestions
+    return template.render(itinerary=itinerary, selected_layout=normalized_layout)
+"""Utility helpers for itinerary formatting."""
+from __future__ import annotations
+
+from typing import Iterable
+
+from jinja2 import Environment, PackageLoader, select_autoescape
+
+from . import models
+
+
+def render_itinerary(itinerary: models.Itinerary) -> str:
+    """Render an itinerary into a printable text/HTML hybrid document."""
+    env = Environment(
+        loader=PackageLoader("app", "templates"),
+        autoescape=select_autoescape(["html", "xml"]),
+        enable_async=False,
+    )
+    template = env.get_template("itinerary.html")
+    return template.render(itinerary=itinerary)
 
 
 def optimize_image_upload(data: bytes, filename: str) -> dict[str, int | str]:
@@ -269,6 +294,7 @@ def compute_outstanding_balance(payments: Iterable[models.Payment], amount_due: 
         for payment in payments
         if getattr(payment, "status", "completed") == "completed"
     )
+    total_paid = sum(float(payment.amount) for payment in payments)
     return round(amount_due - total_paid, 2)
 
 
@@ -575,3 +601,6 @@ def remove_media_files(asset: models.MediaAsset) -> None:
         file_path = BASE_DIR.parent / relative_path
         if file_path.exists():  # pragma: no branch - simple filesystem check
             file_path.unlink()
+def compute_outstanding_balance(payments: Iterable[models.Payment], amount_due: float) -> float:
+    total_paid = sum(float(payment.amount) for payment in payments)
+    return round(amount_due - total_paid, 2)

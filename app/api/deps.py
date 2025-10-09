@@ -9,6 +9,10 @@ from fastapi import Depends, Header, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from .. import crud, schemas
+from typing import Generator
+
+from sqlalchemy.orm import Session
+
 from ..database import SessionLocal
 
 
