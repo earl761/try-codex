@@ -1,10 +1,12 @@
 """Utility helpers for itinerary formatting and media management."""
 from __future__ import annotations
 
+from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 from io import BytesIO
 from pathlib import Path
 from random import randint
+from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional
 from typing import Dict, Iterable, List, Optional
 from io import BytesIO
 from pathlib import Path
@@ -16,6 +18,10 @@ from jinja2 import Environment, PackageLoader, select_autoescape
 from PIL import Image
 
 from . import models
+
+if TYPE_CHECKING:  # pragma: no cover - typing helper
+    from . import schemas
+from .constants import APP_NAME, DEFAULT_POWERED_BY_LABEL
 
 BASE_DIR = Path(__file__).resolve().parent
 MEDIA_ROOT = BASE_DIR / "media_storage"
@@ -62,11 +68,28 @@ SUPPORTED_PAYMENT_PROVIDERS: Dict[str, Dict[str, object]] = {
     },
 }
 
+AVAILABLE_FLIGHT_PROVIDERS: Dict[str, Dict[str, object]] = {
+    "amadeus": {
+        "display_name": "Amadeus Self-Service API",
+        "supports_ticketing": True,
+        "modules": ["flight_booking"],
+        "description": "Air shopping, booking, and ticketing via Amadeus travel APIs",
+    }
+}
+
 ITINERARY_LAYOUT_TEMPLATES: Dict[str, str] = {
     "classic": "itinerary_classic.html",
     "modern": "itinerary_modern.html",
     "gallery": "itinerary_gallery.html",
 }
+
+FLIGHT_TICKET_TEMPLATE = "flight_ticket.html"
+TRAVEL_DOCUMENT_TEMPLATES: Dict[str, str] = {
+    "travel_brief": "travel_brief.html",
+    "visa_letter": "visa_letter.html",
+    "waiver": "traveler_waiver.html",
+}
+PORTAL_TEMPLATE = "client_portal.html"
 
 _ENV = Environment(
     loader=PackageLoader("app", "templates"),
@@ -80,6 +103,28 @@ def _ensure_media_directories() -> None:
         directory.mkdir(parents=True, exist_ok=True)
 
 
+def _resolve_branding_context(
+    agency: Optional[models.TravelAgency],
+) -> dict[str, Optional[object]]:
+    powered_by = DEFAULT_POWERED_BY_LABEL
+    if agency:
+        powered_by = agency.powered_by_label or f"{agency.name} • {DEFAULT_POWERED_BY_LABEL}"
+    return {"agency": agency, "powered_by": powered_by, "app_name": APP_NAME}
+
+
+def build_branding_context(itinerary: models.Itinerary) -> dict[str, Any]:
+    agency = getattr(getattr(itinerary, "client", None), "agency", None)
+    base = _resolve_branding_context(agency)
+    return {
+        **base,
+        "logo": itinerary.brand_logo_url or getattr(agency, "logo_url", None),
+        "primary_color": itinerary.brand_primary_color
+        or getattr(agency, "brand_primary_color", None),
+        "secondary_color": itinerary.brand_secondary_color
+        or getattr(agency, "brand_secondary_color", None),
+    }
+
+
 def render_itinerary(itinerary: models.Itinerary, layout: str = "classic") -> str:
     """Render an itinerary into a printable HTML document with the desired layout."""
 
@@ -88,6 +133,102 @@ def render_itinerary(itinerary: models.Itinerary, layout: str = "classic") -> st
         normalized_layout, ITINERARY_LAYOUT_TEMPLATES["classic"]
     )
     template = _ENV.get_template(template_name)
+    branding = build_branding_context(itinerary)
+    return template.render(
+        itinerary=itinerary,
+        selected_layout=normalized_layout,
+        branding=branding,
+    )
+
+
+def render_travel_document(
+    itinerary: models.Itinerary,
+    document_type: str,
+    *,
+    context: Optional[Dict[str, Any]] = None,
+) -> str:
+    normalized = document_type.lower()
+    template_name = TRAVEL_DOCUMENT_TEMPLATES.get(normalized)
+    if not template_name:
+        raise ValueError(f"Unsupported document type '{document_type}'")
+    template = _ENV.get_template(template_name)
+    payload = {
+        "itinerary": itinerary,
+        "branding": build_branding_context(itinerary),
+        "generated_at": datetime.utcnow(),
+    }
+    if context:
+        payload.update(context)
+    return template.render(**payload)
+
+
+def render_portal_page(view: "schemas.PortalView", token: str) -> str:
+    template = _ENV.get_template(PORTAL_TEMPLATE)
+    return template.render(portal=view, token=token)
+
+
+def generate_itinerary_suggestions(
+    itinerary: models.Itinerary, *, focus: Optional[str] = None
+) -> List[Dict[str, Any]]:
+    focus = (focus or "general").lower()
+    suggestions: List[Dict[str, Any]] = []
+
+    total_days = len({item.day_number for item in itinerary.items})
+    base_cost = sum(
+        Decimal(item.estimated_cost) for item in itinerary.items if item.estimated_cost
+    )
+
+    if focus in {"general", "pricing"}:
+        markup = Decimal(itinerary.calculated_margin or 0)
+        if base_cost and markup / base_cost < Decimal("0.2"):
+            suggestions.append(
+                {
+                    "title": "Consider increasing markup",
+                    "description": "Current margin is below 20%. Review supplier costs or adjust the pricing strategy to protect profitability.",
+                    "confidence": 0.7,
+                }
+            )
+
+    if focus in {"general", "activities"} and total_days < 3:
+        suggestions.append(
+            {
+                "title": "Add immersive experiences",
+                "description": "Short itineraries benefit from signature experiences such as cooking classes or private guides to create standout memories.",
+                "confidence": 0.6,
+            }
+        )
+
+    note_categories = {note.category for note in itinerary.notes}
+    if focus in {"general", "traveler_support"} and "visa" not in note_categories:
+        suggestions.append(
+            {
+                "title": "Document visa guidance",
+                "description": "Include visa or entry requirement notes to reduce traveler anxiety before departure.",
+                "confidence": 0.8,
+            }
+        )
+
+    if focus in {"wellness", "general"} and not any(
+        item.category == "accommodation" and "spa" in (item.description or "").lower()
+        for item in itinerary.items
+    ):
+        suggestions.append(
+            {
+                "title": "Offer a wellness upgrade",
+                "description": "Consider adding a spa afternoon or wellness-focused accommodation to encourage upsell opportunities.",
+                "confidence": 0.55,
+            }
+        )
+
+    if not suggestions:
+        suggestions.append(
+            {
+                "title": "Itinerary looks balanced",
+                "description": "No immediate enhancements detected. Share with collaborators for additional inspiration.",
+                "confidence": 0.4,
+            }
+        )
+    return suggestions
     return template.render(itinerary=itinerary, selected_layout=normalized_layout)
 """Utility helpers for itinerary formatting."""
 from __future__ import annotations
@@ -236,6 +377,174 @@ def list_supported_payment_providers() -> List[Dict[str, object]]:
     for identifier, meta in SUPPORTED_PAYMENT_PROVIDERS.items():
         providers.append({"id": identifier, **meta})
     return providers
+
+
+def list_available_flight_providers() -> List[Dict[str, object]]:
+    """Expose configured flight providers and their capabilities."""
+
+    providers: List[Dict[str, object]] = []
+    for identifier, meta in AVAILABLE_FLIGHT_PROVIDERS.items():
+        providers.append({"id": identifier, **meta})
+    return providers
+
+
+def search_amadeus_flights(
+    *,
+    trip_type: str,
+    origin: str | None = None,
+    destination: str | None = None,
+    departure_date: datetime | date | None = None,
+    return_date: datetime | date | None = None,
+    segments: Optional[List[Dict[str, object]]] = None,
+    passengers: int = 1,
+    travel_class: str | None = None,
+) -> List[Dict[str, object]]:
+    """Simulate a flight offer search using Amadeus discovery APIs."""
+
+    # Normalize input types
+    trip_type_key = trip_type.lower()
+    offers: List[Dict[str, object]] = []
+    cabin = (travel_class or "ECONOMY").upper()
+    if trip_type_key == "multi_city":
+        normalized_segments: List[Dict[str, object]] = []
+        for raw_segment in segments or []:
+            seg_origin = (raw_segment.get("origin") or "").upper()
+            seg_destination = (raw_segment.get("destination") or "").upper()
+            departure_value = raw_segment.get("departure_date")
+            if isinstance(departure_value, datetime):
+                segment_date = departure_value.date()
+            else:
+                segment_date = departure_value
+            if not seg_origin or not seg_destination or segment_date is None:
+                raise ValueError(
+                    "Each multi-city segment must include origin, destination, and departure_date"
+                )
+            normalized_segments.append(
+                {
+                    "origin": seg_origin,
+                    "destination": seg_destination,
+                    "date": segment_date,
+                }
+            )
+
+        for option in range(1, 3):
+            offer_segments: List[Dict[str, object]] = []
+            for index, segment in enumerate(normalized_segments, start=1):
+                departure_time = time(hour=7 + option + index, minute=10 * option)
+                departure_dt = datetime.combine(segment["date"], departure_time)
+                arrival_dt = departure_dt + timedelta(hours=3 + index, minutes=25)
+                duration_minutes = int(
+                    (arrival_dt - departure_dt).total_seconds() // 60
+                )
+                carrier = "KL" if (option + index) % 2 == 0 else "AF"
+                offer_segments.append(
+                    {
+                        "origin": segment["origin"],
+                        "destination": segment["destination"],
+                        "departure": departure_dt,
+                        "arrival": arrival_dt,
+                        "carrier": carrier,
+                        "flight_number": f"{carrier}{randint(100, 999)}",
+                        "duration_minutes": duration_minutes,
+                        "cabin": cabin,
+                        "fare_class": "Y" if cabin == "ECONOMY" else cabin[:1],
+                    }
+                )
+
+            base_price = Decimal("220.00") + Decimal(option * 85 + len(offer_segments) * 30)
+            total_price = (base_price * Decimal(passengers)).quantize(Decimal("0.01"))
+            offers.append(
+                {
+                    "id": f"AMA-{randint(10000, 99999)}",
+                    "provider": "amadeus",
+                    "total_price": total_price,
+                    "currency": "USD",
+                    "segments": offer_segments,
+                    "fare_basis": f"MC{randint(1000, 9999)}",
+                }
+            )
+        return offers
+
+    if not origin or not destination or departure_date is None:
+        raise ValueError(
+            "origin, destination, and departure_date are required for one-way and round-trip searches"
+        )
+
+    if isinstance(departure_date, datetime):
+        outbound_date = departure_date.date()
+    else:
+        outbound_date = departure_date
+    inbound_date = None
+    if return_date:
+        inbound_date = return_date.date() if isinstance(return_date, datetime) else return_date
+
+    origin_code = origin.upper()
+    destination_code = destination.upper()
+
+    for option in range(1, 3):
+        outbound_departure = datetime.combine(
+            outbound_date, time(hour=8 + option * 2, minute=15)
+        )
+        outbound_arrival = outbound_departure + timedelta(hours=8, minutes=45)
+        duration_minutes = int((outbound_arrival - outbound_departure).total_seconds() // 60)
+        base_price = Decimal("320.00") + Decimal(option * 65)
+        total_price = (base_price * Decimal(passengers)).quantize(Decimal("0.01"))
+        offer_segments: List[Dict[str, object]] = [
+            {
+                "origin": origin_code,
+                "destination": destination_code,
+                "departure": outbound_departure,
+                "arrival": outbound_arrival,
+                "carrier": "KQ" if option == 1 else "ET",
+                "flight_number": f"{('KQ' if option == 1 else 'ET')}{randint(400, 799)}",
+                "duration_minutes": duration_minutes,
+                "cabin": cabin,
+                "fare_class": "Y" if cabin == "ECONOMY" else cabin[:1],
+            }
+        ]
+
+        if trip_type_key == "round_trip" and inbound_date:
+            return_departure = datetime.combine(
+                inbound_date, time(hour=17 + option, minute=5)
+            )
+            return_arrival = return_departure + timedelta(hours=7, minutes=55)
+            return_duration = int(
+                (return_arrival - return_departure).total_seconds() // 60
+            )
+            offer_segments.append(
+                {
+                    "origin": destination_code,
+                    "destination": origin_code,
+                    "departure": return_departure,
+                    "arrival": return_arrival,
+                    "carrier": "KQ" if option == 1 else "ET",
+                    "flight_number": f"{('KQ' if option == 1 else 'ET')}{randint(120, 399)}",
+                    "duration_minutes": return_duration,
+                    "cabin": cabin,
+                    "fare_class": "Y" if cabin == "ECONOMY" else cabin[:1],
+                }
+            )
+
+        offers.append(
+            {
+                "id": f"AMA-{randint(10000, 99999)}",
+                "provider": "amadeus",
+                "total_price": total_price,
+                "currency": "USD",
+                "segments": offer_segments,
+                "fare_basis": f"FX{randint(1000, 9999)}",
+            }
+        )
+
+    return offers
+
+
+def render_flight_ticket(booking: models.FlightBooking) -> str:
+    """Render a printable flight ticket confirmation for a booking."""
+
+    template = _ENV.get_template(FLIGHT_TICKET_TEMPLATE)
+    branding = _resolve_branding_context(getattr(booking, "agency", None))
+    return template.render(booking=booking, branding=branding)
 
 
 def initiate_payment_with_provider(

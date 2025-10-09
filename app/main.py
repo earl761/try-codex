@@ -20,6 +20,9 @@ Base.metadata.create_all(bind=engine)
 
 templates = Jinja2Templates(directory="app/templates")
 
+
+def create_application() -> FastAPI:
+    app = FastAPI(title="Tour Planner API", version="4.0.0")
 DEFAULT_LANDING = schemas.LandingPageContent(
     headline="Build unforgettable journeys with confidence",
     subheadline="Streamline itineraries, finances, and supplier management in one dashboard.",
@@ -36,6 +39,7 @@ def create_application() -> FastAPI:
 
     @app.get("/", response_class=HTMLResponse, tags=["marketing"], summary="SEO landing page")
     def landing_page(request: Request, db: Session = Depends(get_db)) -> HTMLResponse:
+        content = crud.get_landing_page_content(db)
         settings: Dict[str, str] = {setting.key: setting.value for setting in crud.list_site_settings(db)}
         content = DEFAULT_LANDING.model_copy()
         packages = [

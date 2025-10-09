@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import shutil
+import json
 import sys
 from datetime import date
 from pathlib import Path
@@ -19,6 +20,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from app import crud, schemas  # noqa: E402
 from app.database import Base  # noqa: E402
 from app.main import app, get_db  # noqa: E402
 from app.utils import MEDIA_ROOT  # noqa: E402
@@ -61,6 +63,23 @@ def override_get_db() -> Generator[Session, None, None]:
 app.dependency_overrides[get_db] = override_get_db
 
 
+def create_super_admin_user(email: str = "founder@tourplanner.example") -> str:
+    with TestingSessionLocal() as session:
+        crud.create_user(
+            session,
+            schemas.UserCreate(
+                email=email,
+                password="SuperAdmin#2024",
+                full_name="Platform Owner",
+                is_admin=True,
+                is_super_admin=True,
+                role="super_admin",
+            ),
+        )
+        session.commit()
+    return email
+
+
 @pytest.fixture
 def api_client() -> Generator[TestClient, None, None]:
     reset_database()
@@ -92,6 +111,40 @@ def upload_sample_media_asset(client: TestClient) -> int:
     return body["id"]
 
 
+def create_sample_itinerary(client: TestClient, client_id: int) -> int:
+    payload = {
+        "client_id": client_id,
+        "title": "Collaborative Safari",
+        "start_date": str(date(2024, 7, 1)),
+        "end_date": str(date(2024, 7, 5)),
+        "status": "proposal",
+        "estimate_amount": "1200.00",
+        "estimate_currency": "USD",
+        "items": [
+            {
+                "day_number": 1,
+                "title": "Arrival",
+                "description": "Airport transfer and welcome dinner.",
+                "location": "Arusha",
+                "category": "transport",
+                "estimated_cost": "150.00",
+            }
+        ],
+        "notes": [
+            {
+                "category": "custom",
+                "content": "Remember to carry copies of your passport and insurance.",
+            }
+        ],
+    }
+    response = client.post("/itineraries", json=payload)
+    assert response.status_code == 201
+    return response.json()["id"]
+
+
+def test_create_itinerary_and_print(api_client: TestClient) -> None:
+    client_id = create_sample_client(api_client)
+    asset_id = upload_sample_media_asset(api_client)
 def test_create_itinerary_and_print(api_client: TestClient) -> None:
     client_id = create_sample_client(api_client)
     asset_id = upload_sample_media_asset(api_client)
@@ -162,6 +215,7 @@ def test_create_itinerary_and_print(api_client: TestClient) -> None:
     assert classic.status_code == 200
     classic_html = classic.text
     assert "Bali Adventure" in classic_html
+    assert "Powered by Tour Planner" in classic_html
     assert "Day 1" in classic_html
     assert "Extensions & Enhancements" in classic_html
     assert "Travel Briefing" in classic_html
@@ -490,6 +544,7 @@ def test_authentication_with_two_factor(api_client: TestClient) -> None:
     user_body = signup_response.json()
     assert user_body["email"] == email
     assert user_body["agency_id"] is not None
+    assert user_body["role"] == "agency_owner"
 
     login_response = api_client.post("/auth/login", json={"email": email, "password": password})
     assert login_response.status_code == 200
@@ -527,6 +582,7 @@ def test_authentication_with_two_factor(api_client: TestClient) -> None:
 
 
 def test_admin_controls_and_landing_page(api_client: TestClient) -> None:
+    super_admin_email = create_super_admin_user()
     agency_response = api_client.post(
         "/admin/agencies",
         json={
@@ -537,6 +593,9 @@ def test_admin_controls_and_landing_page(api_client: TestClient) -> None:
         },
     )
     assert agency_response.status_code == 201
+    agency_body = agency_response.json()
+    agency_id = agency_body["id"]
+    assert agency_body["powered_by_label"].endswith("Powered by Tour Planner")
     agency_id = agency_response.json()["id"]
 
     update_response = api_client.put(
@@ -564,6 +623,42 @@ def test_admin_controls_and_landing_page(api_client: TestClient) -> None:
     assert updated_credential.status_code == 200
     assert updated_credential.json()["description"] == "Sandbox key"
 
+    landing_update_forbidden = api_client.put(
+        "/admin/landing-page",
+        json={"headline": "Design bespoke tours in minutes"},
+    )
+    assert landing_update_forbidden.status_code == 403
+
+    landing_payload = {
+        "headline": "Design bespoke tours in minutes",
+        "subheadline": "Scale your agency with automation and insight.",
+        "call_to_action": "Book a demo",
+        "seo_description": "Travel CRM and itinerary software for ambitious agencies.",
+        "hero_image_url": "https://cdn.example.com/hero.png",
+        "meta_keywords": ["travel software", "itinerary builder", "crm"],
+    }
+    landing_headers = {"X-Admin-Email": super_admin_email}
+    landing_update = api_client.put(
+        "/admin/landing-page",
+        json=landing_payload,
+        headers=landing_headers,
+    )
+    assert landing_update.status_code == 200
+    landing_body = landing_update.json()
+    assert landing_body["headline"] == landing_payload["headline"]
+    assert landing_body["meta_keywords"] == landing_payload["meta_keywords"]
+
+    landing_get_forbidden = api_client.get("/admin/landing-page")
+    assert landing_get_forbidden.status_code == 403
+    landing_get = api_client.get("/admin/landing-page", headers=landing_headers)
+    assert landing_get.status_code == 200
+    assert landing_get.json()["seo_description"] == landing_payload["seo_description"]
+
+    landing_page = api_client.get("/")
+    assert landing_page.status_code == 200
+    assert landing_payload["headline"] in landing_page.text
+    assert landing_payload["call_to_action"] in landing_page.text
+    assert "travel software,itinerary builder,crm" in landing_page.text
     settings_response = api_client.put(
         "/admin/settings/headline",
         json={"value": "Design bespoke tours in minutes"},
@@ -597,3 +692,384 @@ def test_admin_controls_and_landing_page(api_client: TestClient) -> None:
     settings_list = api_client.get("/admin/settings")
     assert settings_list.status_code == 200
     assert any(setting["key"] == "headline" for setting in settings_list.json())
+
+
+def test_agency_staff_management(api_client: TestClient) -> None:
+    create_super_admin_user()
+    agency_response = api_client.post(
+        "/admin/agencies",
+        json={
+            "name": "Trailfinders",
+            "slug": "trailfinders",
+            "contact_email": "hello@trailfinders.example",
+        },
+    )
+    assert agency_response.status_code == 201
+    agency_id = agency_response.json()["id"]
+
+    staff_payload = {
+        "email": "planner@trailfinders.example",
+        "password": "PlannerPass123",
+        "full_name": "Plan Pro",
+        "role": "planner",
+    }
+    create_response = api_client.post(f"/agencies/{agency_id}/users", json=staff_payload)
+    assert create_response.status_code == 201
+    staff_body = create_response.json()
+    assert staff_body["role"] == "planner"
+    assert staff_body["agency_id"] == agency_id
+
+    roster = api_client.get(f"/agencies/{agency_id}/users")
+    assert roster.status_code == 200
+    assert len(roster.json()) == 1
+
+    update_response = api_client.put(
+        f"/agencies/{agency_id}/users/{staff_body['id']}",
+        json={"role": "finance"},
+    )
+    assert update_response.status_code == 200
+    assert update_response.json()["role"] == "finance"
+
+    delete_response = api_client.delete(f"/agencies/{agency_id}/users/{staff_body['id']}")
+    assert delete_response.status_code == 204
+
+    empty_roster = api_client.get(f"/agencies/{agency_id}/users")
+    assert empty_roster.status_code == 200
+    assert empty_roster.json() == []
+
+
+def test_amadeus_search_supports_multi_city(api_client: TestClient) -> None:
+    segments_payload = [
+        {
+            "origin": "NBO",
+            "destination": "ADD",
+            "departure_date": str(date(2024, 10, 4)),
+        },
+        {
+            "origin": "ADD",
+            "destination": "DXB",
+            "departure_date": str(date(2024, 10, 8)),
+        },
+    ]
+    params = [
+        ("trip_type", "multi_city"),
+        ("passengers", "2"),
+        ("travel_class", "economy"),
+        ("segments", json.dumps(segments_payload)),
+    ]
+    offers_response = api_client.get("/flights/search", params=params)
+    assert offers_response.status_code == 200
+    offers = offers_response.json()
+    assert offers
+    for offer in offers:
+        assert len(offer["segments"]) == 2
+        assert offer["segments"][0]["origin"] == "NBO"
+        assert offer["segments"][-1]["destination"] == "DXB"
+
+
+def test_flight_booking_requires_subscription(api_client: TestClient) -> None:
+    agency_payload = {
+        "name": "Skyward Travel",
+        "contact_email": "ops@skyward.example",
+    }
+    agency_response = api_client.post("/admin/agencies", json=agency_payload)
+    assert agency_response.status_code == 201
+    agency_id = agency_response.json()["id"]
+
+    client_id = create_sample_client(api_client)
+
+    offers_response = api_client.get(
+        "/flights/search",
+        params={
+            "origin": "NBO",
+            "destination": "JNB",
+            "departure_date": str(date(2024, 9, 10)),
+            "passengers": 1,
+        },
+    )
+    assert offers_response.status_code == 200
+    offers = offers_response.json()
+    assert offers
+
+    offer = offers[0]
+    segments = [
+        {
+            "segment_number": index,
+            "origin": segment["origin"],
+            "destination": segment["destination"],
+            "departure": segment["departure"],
+            "arrival": segment["arrival"],
+            "carrier": segment["carrier"],
+            "flight_number": segment["flight_number"],
+            "cabin": segment.get("cabin"),
+            "fare_class": segment.get("fare_class"),
+        }
+        for index, segment in enumerate(offer["segments"], start=1)
+    ]
+
+    booking_payload = {
+        "agency_id": agency_id,
+        "client_id": client_id,
+        "provider": "amadeus",
+        "provider_offer_id": offer["id"],
+        "total_price": offer["total_price"],
+        "currency": offer["currency"],
+        "passengers": [
+            {
+                "first_name": "Unauthorised",
+                "last_name": "Traveler",
+                "passenger_type": "ADT",
+            }
+        ],
+        "segments": segments,
+    }
+
+    booking_response = api_client.post("/flights/bookings", json=booking_payload)
+    assert booking_response.status_code == 403
+    assert booking_response.json()["detail"] == "Agency subscription does not include flight booking"
+
+
+
+def test_flight_booking_panel_flow(api_client: TestClient) -> None:
+    providers_response = api_client.get("/flights/providers")
+    assert providers_response.status_code == 200
+    providers = providers_response.json()
+    assert providers[0]["id"] == "amadeus"
+    assert "flight_booking" in providers[0]["modules"]
+
+    package_payload = {
+        "name": "Flight Desk",
+        "price": "89.00",
+        "currency": "USD",
+        "billing_cycle": "monthly",
+        "modules": ["flight_booking"],
+    }
+    package_response = api_client.post("/admin/packages", json=package_payload)
+    assert package_response.status_code == 201
+    package_id = package_response.json()["id"]
+
+    agency_payload = {
+        "name": "Altitude Journeys",
+        "contact_email": "bookings@altitude.example",
+        "contact_phone": "+15551234567",
+    }
+    agency_response = api_client.post("/admin/agencies", json=agency_payload)
+    assert agency_response.status_code == 201
+    agency_id = agency_response.json()["id"]
+
+    subscription_payload = {
+        "agency_id": agency_id,
+        "package_id": package_id,
+    }
+    subscription_response = api_client.post("/admin/subscriptions", json=subscription_payload)
+    assert subscription_response.status_code == 201
+
+    client_id = create_sample_client(api_client)
+
+    offers_response = api_client.get(
+        "/flights/search",
+        params={
+            "trip_type": "round_trip",
+            "origin": "NBO",
+            "destination": "JNB",
+            "departure_date": str(date(2024, 9, 20)),
+            "return_date": str(date(2024, 9, 27)),
+            "passengers": 2,
+            "travel_class": "business",
+        },
+    )
+    assert offers_response.status_code == 200
+    offers = offers_response.json()
+    assert len(offers) >= 1
+
+    selected_offer = offers[0]
+    segments = [
+        {
+            "segment_number": index,
+            "origin": segment["origin"],
+            "destination": segment["destination"],
+            "departure": segment["departure"],
+            "arrival": segment["arrival"],
+            "carrier": segment["carrier"],
+            "flight_number": segment["flight_number"],
+            "cabin": segment.get("cabin"),
+            "fare_class": segment.get("fare_class"),
+        }
+        for index, segment in enumerate(selected_offer["segments"], start=1)
+    ]
+
+    booking_payload = {
+        "agency_id": agency_id,
+        "client_id": client_id,
+        "provider": "amadeus",
+        "provider_offer_id": selected_offer["id"],
+        "total_price": selected_offer["total_price"],
+        "currency": selected_offer["currency"],
+        "passengers": [
+            {
+                "first_name": "Ava",
+                "last_name": "Flyer",
+                "passenger_type": "ADT",
+                "document_number": "P998877",
+            },
+            {
+                "first_name": "Eli",
+                "last_name": "Flyer",
+                "passenger_type": "ADT",
+            },
+        ],
+        "segments": segments,
+        "notes": "Hold premium cabin seats for client approval.",
+    }
+
+    booking_response = api_client.post("/flights/bookings", json=booking_payload)
+    assert booking_response.status_code == 201
+    booking_body = booking_response.json()
+    assert booking_body["provider"] == "amadeus"
+    assert len(booking_body["segments"]) == len(segments)
+    assert len(booking_body["pnr"]) == 6
+
+    list_response = api_client.get("/flights/bookings", params={"agency_id": agency_id})
+    assert list_response.status_code == 200
+    assert list_response.json()[0]["pnr"] == booking_body["pnr"]
+
+    ticket_payload = {
+        "ticket_numbers": ["176000000001", "176000000002"],
+        "document_url": "https://example.com/ticket.pdf",
+    }
+    ticket_response = api_client.post(
+        f"/flights/bookings/{booking_body['id']}/ticket", json=ticket_payload
+    )
+    assert ticket_response.status_code == 200
+    ticket_body = ticket_response.json()
+    assert ticket_body["status"] == "ticketed"
+    assert ticket_body["ticket_numbers"] == ticket_payload["ticket_numbers"]
+
+    ticket_html = api_client.get(f"/flights/bookings/{booking_body['id']}/ticket")
+    assert ticket_html.status_code == 200
+    assert booking_body["pnr"] in ticket_html.text
+    assert "Ava Flyer" in ticket_html.text
+
+def test_itinerary_collaboration_and_documents(api_client: TestClient) -> None:
+    client_id = create_sample_client(api_client)
+    itinerary_id = create_sample_itinerary(api_client, client_id)
+
+    with TestingSessionLocal() as session:
+        collaborator = crud.create_user(
+            session,
+            schemas.UserCreate(
+                email="collab@example.com",
+                password="Collaborate123!",
+                full_name="Collaborator Coach",
+                role="planner",
+            ),
+        )
+        session.commit()
+        collaborator_id = collaborator.id
+
+    collab_response = api_client.post(
+        f"/itineraries/{itinerary_id}/collaborators",
+        json={"user_id": collaborator_id, "role": "editor", "permissions": ["comment"]},
+    )
+    assert collab_response.status_code == 201
+    assert collab_response.json()["user"]["email"] == "collab@example.com"
+
+    collaborators = api_client.get(f"/itineraries/{itinerary_id}/collaborators")
+    assert collaborators.status_code == 200
+    assert len(collaborators.json()) == 1
+
+    comment_response = api_client.post(
+        f"/itineraries/{itinerary_id}/comments",
+        json={"author_id": collaborator_id, "body": "Can we add a sunset cruise?"},
+    )
+    assert comment_response.status_code == 201
+    comment_id = comment_response.json()["id"]
+
+    resolve_response = api_client.post(
+        f"/itineraries/{itinerary_id}/comments/{comment_id}/resolve",
+        json={"resolved": True},
+    )
+    assert resolve_response.status_code == 200
+    assert resolve_response.json()["resolved"] is True
+
+    update_response = api_client.put(
+        f"/itineraries/{itinerary_id}",
+        json={"status": "sent", "target_margin": "20.00", "markup_strategy": "percentage"},
+    )
+    assert update_response.status_code == 200
+
+    versions = api_client.get(f"/itineraries/{itinerary_id}/versions")
+    assert versions.status_code == 200
+    assert versions.json()[0]["version_number"] >= 1
+
+    pricing = api_client.get(f"/itineraries/{itinerary_id}/pricing")
+    assert pricing.status_code == 200
+    pricing_body = pricing.json()
+    assert pricing_body["total_price"]
+
+    suggestions = api_client.get(
+        f"/itineraries/{itinerary_id}/suggestions", params={"focus": "pricing"}
+    )
+    assert suggestions.status_code == 200
+    assert len(suggestions.json()) >= 1
+
+    brief = api_client.get(f"/itineraries/{itinerary_id}/documents/travel_brief")
+    assert brief.status_code == 200
+    assert "Travel Brief" in brief.text
+
+    visa_letter = api_client.get(f"/itineraries/{itinerary_id}/documents/visa_letter")
+    assert visa_letter.status_code == 200
+    assert "Visa Support Letter" in visa_letter.text
+
+    bad_doc = api_client.get(f"/itineraries/{itinerary_id}/documents/unknown")
+    assert bad_doc.status_code == 400
+
+    itinerary_detail = api_client.get(f"/itineraries/{itinerary_id}")
+    assert itinerary_detail.status_code == 200
+    body = itinerary_detail.json()
+    assert body["comments"][0]["body"] == "Can we add a sunset cruise?"
+    assert body["collaborators"][0]["user"]["email"] == "collab@example.com"
+
+
+def test_portal_invitation_and_analytics(api_client: TestClient) -> None:
+    client_id = create_sample_client(api_client)
+    itinerary_id = create_sample_itinerary(api_client, client_id)
+
+    invitation_response = api_client.post(
+        "/portal/invitations",
+        json={"itinerary_id": itinerary_id, "client_id": client_id, "expires_in_days": 3},
+    )
+    assert invitation_response.status_code == 201
+    invitation_body = invitation_response.json()
+    token = invitation_body["token"]
+
+    portal_view = api_client.get(f"/portal/invitations/{token}")
+    assert portal_view.status_code == 200
+    view_body = portal_view.json()
+    assert view_body["itinerary"]["id"] == itinerary_id
+    assert "available_documents" in view_body
+
+    portal_page = api_client.get(f"/portal/invitations/{token}/page")
+    assert portal_page.status_code == 200
+    assert "Client Portal" in portal_page.text
+
+    decision_response = api_client.post(
+        f"/portal/invitations/{token}/decision", json={"decision": "approved"}
+    )
+    assert decision_response.status_code == 200
+    assert decision_response.json()["status"] == "approved"
+
+    waiver_response = api_client.post(
+        f"/portal/invitations/{token}/waiver", json={"accepted": True}
+    )
+    assert waiver_response.status_code == 200
+    assert waiver_response.json()["waiver_signed"] is True
+
+    analytics = api_client.get("/admin/analytics/overview")
+    assert analytics.status_code == 200
+    analytics_body = analytics.json()
+    assert analytics_body["total_clients"] == 1
+    assert analytics_body["total_itineraries"] >= 1
+
+    delete_response = api_client.delete(f"/portal/invitations/{token}")
+    assert delete_response.status_code == 204

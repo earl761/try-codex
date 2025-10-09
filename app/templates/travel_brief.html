@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Travel Brief • {{ itinerary.title }}</title>
+    <style>
+      body {
+        font-family: "Segoe UI", Roboto, sans-serif;
+        margin: 0;
+        padding: 1.5rem;
+        color: #1f2a44;
+        background-color: #f6f8fb;
+      }
+      header {
+        text-align: center;
+        margin-bottom: 2rem;
+      }
+      h1 {
+        font-size: 1.75rem;
+        margin-bottom: 0.25rem;
+      }
+      .badge {
+        display: inline-block;
+        padding: 0.35rem 0.75rem;
+        border-radius: 999px;
+        background: {{ branding.primary_color or '#1F3A93' }};
+        color: #fff;
+        font-size: 0.85rem;
+      }
+      .section {
+        background: #fff;
+        border-radius: 1rem;
+        padding: 1.25rem;
+        margin-bottom: 1.25rem;
+        box-shadow: 0 10px 30px rgba(31, 58, 147, 0.08);
+      }
+      .grid {
+        display: grid;
+        gap: 1rem;
+      }
+      @media (min-width: 768px) {
+        .grid-two {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+      }
+      ul {
+        padding-left: 1rem;
+      }
+      footer {
+        text-align: center;
+        margin-top: 2rem;
+        color: #60738f;
+        font-size: 0.85rem;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Travel Brief</h1>
+      <div class="badge">{{ itinerary.client.name }} • {{ itinerary.start_date.strftime('%b %d, %Y') }} to {{ itinerary.end_date.strftime('%b %d, %Y') }}</div>
+      <p>{{ branding.powered_by }}</p>
+    </header>
+
+    <section class="section grid grid-two">
+      <div>
+        <h2>Highlights</h2>
+        <ul>
+          {% for item in itinerary.items[:4] %}
+          <li><strong>Day {{ item.day_number }}:</strong> {{ item.title }} – {{ item.location or 'TBC' }}</li>
+          {% endfor %}
+        </ul>
+      </div>
+      <div>
+        <h2>Essential Contacts</h2>
+        <ul>
+          <li>Travel Consultant: {{ itinerary.client.agency.name if itinerary.client and itinerary.client.agency else 'Your consultant' }}</li>
+          <li>Email: {{ itinerary.client.email or itinerary.client.agency.contact_email if itinerary.client and itinerary.client.agency else 'N/A' }}</li>
+          <li>Phone: {{ itinerary.client.phone or itinerary.client.agency.contact_phone if itinerary.client and itinerary.client.agency else 'N/A' }}</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>Know Before You Go</h2>
+      <ul>
+        {% for note in itinerary.notes %}
+        <li><strong>{{ note.category|title }}:</strong> {{ note.content }}</li>
+        {% endfor %}
+        {% if not itinerary.notes %}
+        <li>Your consultant will add visa, packing, and destination guidance shortly.</li>
+        {% endif %}
+      </ul>
+    </section>
+
+    <section class="section">
+      <h2>Financial Snapshot</h2>
+      <p>Total Estimated Value: {{ itinerary.estimate_amount or itinerary.total_price }} {{ itinerary.estimate_currency }}</p>
+      <p>Generated on {{ generated_at.strftime('%B %d, %Y %H:%M UTC') }}</p>
+    </section>
+
+    <footer>
+      Crafted for {{ itinerary.client.name }} • {{ branding.app_name }}
+    </footer>
+  </body>
+</html>

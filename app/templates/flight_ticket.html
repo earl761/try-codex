@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <title>Flight Ticket – {{ booking.pnr }}</title>
+    <style>
+        body {
+            font-family: "Helvetica Neue", Arial, sans-serif;
+            margin: 0;
+            padding: 2rem;
+            background-color: #f6f7fb;
+            color: #1f2a44;
+        }
+        header {
+            border-bottom: 3px solid #1f3a93;
+            margin-bottom: 2rem;
+            padding-bottom: 1rem;
+        }
+        h1 {
+            font-size: 1.75rem;
+            margin: 0;
+        }
+        .meta {
+            display: flex;
+            gap: 1.5rem;
+            flex-wrap: wrap;
+            margin-top: 0.75rem;
+            font-size: 0.95rem;
+        }
+        .badge {
+            background-color: #1f3a93;
+            color: #fff;
+            border-radius: 999px;
+            padding: 0.25rem 0.75rem;
+            font-size: 0.8rem;
+            letter-spacing: 0.08em;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 1.5rem;
+            background-color: #fff;
+            box-shadow: 0 4px 16px rgba(15, 23, 42, 0.08);
+        }
+        th, td {
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid #e1e5ee;
+            text-align: left;
+            font-size: 0.95rem;
+        }
+        th {
+            background-color: #f0f2f9;
+            text-transform: uppercase;
+            font-weight: 600;
+            color: #3c4a6b;
+        }
+        section {
+            margin-bottom: 2rem;
+        }
+        .muted {
+            color: #6b7280;
+        }
+        .tickets {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+        .ticket-chip {
+            padding: 0.5rem 0.9rem;
+            background-color: #e8efff;
+            color: #1f3a93;
+            border-radius: 0.75rem;
+            font-weight: 600;
+        }
+        footer {
+            margin-top: 2rem;
+            text-align: center;
+            color: #3c4a6b;
+            font-size: 0.85rem;
+        }
+        footer .powered-by {
+            margin-top: 0.35rem;
+            font-size: 0.72rem;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            color: #1f3a93;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>Flight Ticket Confirmation</h1>
+        <div class="meta">
+            <div><strong>PNR:</strong> {{ booking.pnr }}</div>
+            <div><strong>Status:</strong> {{ booking.status | upper }}</div>
+            <div><strong>Provider:</strong> {{ booking.provider | title }}</div>
+            <div class="badge">{{ booking.currency }} {{ booking.total_price }}</div>
+        </div>
+    </header>
+
+    <section>
+        <h2>Passengers</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Type</th>
+                    <th>Document</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for passenger in booking.passengers %}
+                <tr>
+                    <td>{{ passenger.first_name }} {{ passenger.last_name }}</td>
+                    <td>{{ passenger.passenger_type }}</td>
+                    <td>{{ passenger.document_number or '—' }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </section>
+
+    <section>
+        <h2>Flight Segments</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Segment</th>
+                    <th>Departure</th>
+                    <th>Arrival</th>
+                    <th>Flight</th>
+                    <th>Cabin</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for segment in booking.segments %}
+                <tr>
+                    <td>{{ segment.origin }} → {{ segment.destination }}</td>
+                    <td>{{ segment.departure.strftime('%d %b %Y %H:%M') }}</td>
+                    <td>{{ segment.arrival.strftime('%d %b %Y %H:%M') }}</td>
+                    <td>{{ segment.carrier }} {{ segment.flight_number }}</td>
+                    <td>{{ segment.cabin or '—' }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </section>
+
+    <section>
+        <h2>Ticket Details</h2>
+        {% if booking.ticket_numbers %}
+        <div class="tickets">
+            {% for number in booking.ticket_numbers %}
+            <span class="ticket-chip">Ticket {{ loop.index }}: {{ number }}</span>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="muted">Tickets will be issued once payment is confirmed.</p>
+        {% endif %}
+        {% if booking.ticket_document_url %}
+        <p class="muted">Download: <a href="{{ booking.ticket_document_url }}">Ticket document</a></p>
+        {% endif %}
+        {% if booking.ticket_issued_at %}
+        <p class="muted">Issued on {{ booking.ticket_issued_at.strftime('%d %b %Y %H:%M UTC') }}</p>
+        {% endif %}
+    </section>
+    <footer>
+        <div class="powered-by">{{ branding.powered_by }}</div>
+    </footer>
+</body>
+</html>

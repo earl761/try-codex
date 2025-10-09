@@ -4,6 +4,10 @@ from __future__ import annotations
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Response, status
+from sqlalchemy.orm import Session
+
+from ... import crud, schemas
+from ..deps import get_db, require_super_admin
 from fastapi import APIRouter, Depends, HTTPException, Path, Response, status
 from sqlalchemy.orm import Session
 
@@ -210,6 +214,11 @@ def notifications_summary(db: Session = Depends(get_db)) -> schemas.Notification
     return crud.notification_summary(db)
 
 
+@router.get("/analytics/overview", response_model=schemas.AnalyticsOverview)
+def analytics_overview(db: Session = Depends(get_db)) -> schemas.AnalyticsOverview:
+    return crud.get_analytics_overview(db)
+
+
 @router.get("/settings", response_model=list[schemas.SiteSetting])
 def list_settings(db: Session = Depends(get_db)) -> list[schemas.SiteSetting]:
     settings = crud.list_site_settings(db)
@@ -220,6 +229,22 @@ def list_settings(db: Session = Depends(get_db)) -> list[schemas.SiteSetting]:
 def update_setting(key: str, payload: schemas.SiteSettingUpdate, db: Session = Depends(get_db)) -> schemas.SiteSetting:
     setting = crud.upsert_site_setting(db, key=key, value=payload.value)
     return schemas.SiteSetting.model_validate(setting)
+
+
+@router.get("/landing-page", response_model=schemas.LandingPageContent)
+def get_landing_page(
+    db: Session = Depends(get_db), _=Depends(require_super_admin)
+) -> schemas.LandingPageContent:
+    return crud.get_landing_page_content(db)
+
+
+@router.put("/landing-page", response_model=schemas.LandingPageContent)
+def update_landing_page(
+    payload: schemas.LandingPageContentUpdate,
+    db: Session = Depends(get_db),
+    _=Depends(require_super_admin),
+) -> schemas.LandingPageContent:
+    return crud.update_landing_page_content(db, payload)
 
 
 @router.get("/media", response_model=list[schemas.MediaAsset])
